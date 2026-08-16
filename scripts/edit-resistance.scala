@@ -49,15 +49,21 @@ import java.security.MessageDigest
   *   ./scripts/edit-resistance --flix-jar path/to/flix.jar [source.flix]
   * }}}
   *
-  * `scripts/edit-resistance` resolves the Flix compiler jar `flixw` already downloaded and
-  * digest-verified for the version pinned in `.flixw/lock.toml` (or the one passed via
-  * `--flix-jar`), then hands it to `scala-cli` as `--jar` -- a `using jar` directive cannot
-  * be computed at build time, so this script alone has no classpath. Running
+  * `scripts/edit-resistance` resolves a Flix compiler jar -- from `--flix-jar`, `$FLIX_JAR`,
+  * `./flix.jar`, or `flix` on `$PATH`, deliberately never through `flixw` (which holds only
+  * one pinned jar at a time; this needs to compare arbitrary builds against each other) --
+  * then hands it to `scala-cli` as `--jar`. A `using jar` directive cannot be computed at
+  * build time, so this script alone has no classpath. Running
   * `scala-cli run scripts/edit-resistance.scala` directly fails to compile with "object api
   * is not a member of package ca.uwaterloo.flix" for that reason.
   *
   * The compiler runs in this process rather than as a subprocess, so no assembled jar and
   * no scratch project are needed, and the whole sweep costs one compile per perturbation.
+  *
+  * `--compiler-version <string>` labels the report with what produced it. Nothing here can
+  * read that back from the jar itself (verified by hand: neither a jar's manifest nor its
+  * class files record it), so the wrapper script fills it in from the resolved jar's
+  * filename or path when not given explicitly.
   */
 object EditResistance {
 
@@ -75,13 +81,15 @@ object EditResistance {
   private val DefaultSource: Path = Paths.get("src/Main.flix")
 
   def main(args: Array[String]): Unit = {
-    val path = args.headOption.map(Paths.get(_)).getOrElse(DefaultSource)
+    val (compilerVersion, positional) = parseArgs(args.toList)
+    val path = positional.headOption.map(Paths.get(_)).getOrElse(DefaultSource)
     if (!Files.isRegularFile(path)) {
       Console.err.println(s"Error: no such file: $path")
       System.exit(1)
     }
     val source = new String(Files.readAllBytes(path), StandardCharsets.UTF_8)
 
+    println(s"Compiler: ${compilerVersion.getOrElse("unspecified")}")
     println("Baseline")
     val base = compile(source)
     val again = compile(source)
@@ -168,6 +176,25 @@ object EditResistance {
       if (before == after) "output unchanged"
       else s"+$added -$removed classes, ${shared.size - sameBytes} changed at same name"
     println(f"  $label%-34s names $namePct%6.2f%%  bytes $bytePct%6.2f%%   ($effect)")
+  }
+
+  /**
+    * Splits `args` into an optional --compiler-version value and the remaining positional
+    * arguments. Compiled classes never record which compiler produced them (neither a
+    * jar's manifest nor its class files do -- verified by hand), so this is caller-supplied
+    * labeling only; the wrapper script fills it in from the resolved jar's own filename or
+    * path when not given explicitly.
+    */
+  private def parseArgs(args: List[String]): (Option[String], List[String]) = {
+    var compilerVersion: Option[String] = None
+    val positional = List.newBuilder[String]
+    var remaining = args
+    while (remaining.nonEmpty) remaining match {
+      case "--compiler-version" :: value :: tail => compilerVersion = Some(value); remaining = tail
+      case other :: tail => positional += other; remaining = tail
+      case Nil => ()
+    }
+    (compilerVersion, positional.result())
   }
 
   /**
