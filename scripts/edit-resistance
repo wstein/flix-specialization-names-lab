@@ -87,8 +87,15 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Deliberately does not `cd` anywhere: a source.flix argument, or --flix-jar,
+# is a path the caller gave relative to wherever they are, and resolving it
+# against this script's own directory instead -- as `cd`-ing here first
+# would -- silently measures (or looks for a jar at) the wrong thing when
+# this is invoked via a relative path from outside the project. What must
+# stay anchored to the project root regardless of caller cwd -- the default
+# source, the project-root ./flix.jar fallback, this tool's own build/ -- is
+# qualified with $root explicitly below instead.
 root=$(cd "$(dirname "$0")/.." && pwd)
-cd "$root"
 
 # This tool compiles in-process and never reads or writes build/ itself, but
 # a stale build/ from an earlier ./flixw build or ./flixw test can linger
@@ -96,10 +103,10 @@ cd "$root"
 # invocation produces, and keeps a parallel class-id-report census (which
 # does read build/class) from ever picking up classes from a source version
 # that has since moved on.
-rm -rf build
+rm -rf "$root/build"
 
-if [ -z "$jar" ] && [ -f flix.jar ]; then
-  jar=flix.jar
+if [ -z "$jar" ] && [ -f "$root/flix.jar" ]; then
+  jar="$root/flix.jar"
 fi
 
 if [ -z "$jar" ]; then
@@ -107,9 +114,17 @@ if [ -z "$jar" ]; then
 fi
 
 if [ -z "$jar" ] || [ ! -f "$jar" ]; then
-  echo "error: no Flix compiler jar found (tried \$FLIX_JAR, ./flix.jar, and 'flix' on \$PATH)" >&2
-  echo "place a jar at ./flix.jar, or pass --flix-jar" >&2
+  echo "error: no Flix compiler jar found (tried \$FLIX_JAR, $root/flix.jar, and 'flix' on \$PATH)" >&2
+  echo "place a jar at $root/flix.jar, or pass --flix-jar" >&2
   exit 1
+fi
+
+# No positional source.flix was given: fall back to this lab's own demo file
+# explicitly, by absolute path, rather than leaving it to
+# edit-resistance.scala's relative default -- which would otherwise resolve
+# against the caller's cwd now that this never `cd`s.
+if [ ${#args[@]} -eq 0 ]; then
+  args+=("$root/src/Main.flix")
 fi
 
 # Labeling the report: an explicit --compiler-version always wins. Otherwise, this falls
@@ -126,4 +141,4 @@ if [ -z "$compiler_version" ]; then
   fi
 fi
 
-exec scala-cli run scripts/edit-resistance.scala --jvm 21 --jar "$jar" -- --compiler-version "$compiler_version" "${args[@]}"
+exec scala-cli run "$root/scripts/edit-resistance.scala" --jvm 21 --jar "$jar" -- --compiler-version "$compiler_version" "${args[@]}"

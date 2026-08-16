@@ -6,7 +6,12 @@ rem name, never by calling scala-cli on the .scala file itself.
 rem
 rem Usage:
 rem   scripts\class-id-report.cmd [class-directory-or-jar] [--output-dir directory] [--json]
+rem
+rem Deliberately does not `cd` anywhere: a class-directory-or-jar argument, or
+rem --output-dir, is a path the caller gave relative to wherever they are, and
+rem resolving it against this script's own directory instead -- as `cd`-ing
+rem here first would -- silently censuses (or writes) the wrong thing when
+rem this is invoked via a relative path from outside the project.
 setlocal
-cd /d "%~dp0.."
 
-scala-cli run scripts\class-id-report.scala -- %*
+scala-cli run "%~dp0class-id-report.scala" -- %*

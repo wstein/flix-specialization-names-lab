@@ -23,6 +23,15 @@ rem Usage:
 rem   scripts\edit-resistance.cmd [source.flix]
 rem   scripts\edit-resistance.cmd --flix-jar path\to\flix.jar [source.flix]
 rem   scripts\edit-resistance.cmd --compiler-version string [source.flix]
+rem
+rem Deliberately does not `cd` anywhere: a source.flix argument, or
+rem --flix-jar, is a path the caller gave relative to wherever they are, and
+rem resolving it against this script's own directory instead -- as `cd`-ing
+rem here first would -- silently measures (or looks for a jar at) the wrong
+rem thing when this is invoked via a relative path from outside the project.
+rem What must stay anchored to the project root regardless of caller cwd --
+rem the default source, the project-root flix.jar fallback, this tool's own
+rem build\ -- is qualified with %~dp0..\ explicitly below instead.
 setlocal enabledelayedexpansion
 
 rem Parsed first, ahead of everything else below, so -h/--help short-circuits
@@ -77,7 +86,6 @@ echo   3. `flix` on %%PATH%%  a system-installed Flix, if it resolves to a jar
 exit /b 0
 
 :afterparse
-cd /d "%~dp0.."
 
 rem This tool compiles in-process and never reads or writes build\ itself, but
 rem a stale build\ from an earlier flixw.cmd build or flixw.cmd test can
@@ -85,9 +93,9 @@ rem linger alongside it. Wiping it here keeps a run's disk footprint to just
 rem what this invocation produces, and keeps a parallel class-id-report
 rem census (which does read build\class) from ever picking up classes from a
 rem source version that has since moved on.
-if exist build rmdir /s /q build
+if exist "%~dp0..\build" rmdir /s /q "%~dp0..\build"
 
-if "%JAR%"=="" if exist flix.jar set "JAR=flix.jar"
+if "%JAR%"=="" if exist "%~dp0..\flix.jar" set "JAR=%~dp0..\flix.jar"
 
 if "%JAR%"=="" (
   for /f "delims=" %%F in ('where flix 2^>nul') do (
@@ -96,8 +104,8 @@ if "%JAR%"=="" (
 )
 
 if "%JAR%"=="" (
-  echo error: no Flix compiler jar found ^(tried %%FLIX_JAR%%, .\flix.jar, and 'flix' on %%PATH%%^) 1>&2
-  echo place a jar at .\flix.jar, or pass --flix-jar 1>&2
+  echo error: no Flix compiler jar found ^(tried %%FLIX_JAR%%, %~dp0..\flix.jar, and 'flix' on %%PATH%%^) 1>&2
+  echo place a jar at %~dp0..\flix.jar, or pass --flix-jar 1>&2
   exit /b 1
 )
 if not exist "%JAR%" (
@@ -105,10 +113,16 @@ if not exist "%JAR%" (
   exit /b 1
 )
 
+rem No positional source.flix was given: fall back to this lab's own demo file
+rem explicitly, rather than leaving it to edit-resistance.scala's relative
+rem default -- which would otherwise resolve against the caller's cwd now
+rem that this never `cd`s.
+if "%ARGS%"=="" set ARGS= "%~dp0..\src\Main.flix"
+
 rem Labeling the report: an explicit --compiler-version always wins. Otherwise this falls
 rem back to the resolved jar path itself (unlike the POSIX wrapper, this does not also try
 rem to parse a version out of flixw's cache filename convention), so the report always
 rem shows which jar actually produced it.
 if "%COMPILER_VERSION%"=="" set "COMPILER_VERSION=%JAR%"
 
-scala-cli run scripts\edit-resistance.scala --jvm 21 --jar "%JAR%" -- --compiler-version "%COMPILER_VERSION%" %ARGS%
+scala-cli run "%~dp0edit-resistance.scala" --jvm 21 --jar "%JAR%" -- --compiler-version "%COMPILER_VERSION%" %ARGS%

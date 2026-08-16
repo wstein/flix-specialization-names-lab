@@ -7,9 +7,14 @@
 #
 # Usage:
 #   ./scripts/class-id-report [class-directory-or-jar] [--output-dir directory] [--json]
+# Deliberately does not `cd` anywhere: a class-directory-or-jar argument, or
+# --output-dir, is a path the caller gave relative to wherever they are, and
+# resolving it against this script's own directory instead -- as `cd`-ing
+# here first would -- silently censuses (or writes) the wrong thing when
+# this is invoked via a relative path from outside the project, e.g.
+# `../scripts/class-id-report build/class` from a project one level down.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-cd "$root"
 
-exec scala-cli run scripts/class-id-report.scala -- "$@"
+exec scala-cli run "$root/scripts/class-id-report.scala" -- "$@"
