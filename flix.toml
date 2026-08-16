@@ -1,6 +1,6 @@
 [package]
-name        = "flix-template"
-description = "A Flix project template that carries its own compiler via flixw"
+name        = "flix-specialization-names-lab"
+description = "Flix stable specialization names lab"
 version     = "0.1.0"
 flix        = "0.75.2"
 license     = "Apache-2.0"
