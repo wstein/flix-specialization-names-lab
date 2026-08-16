@@ -14,7 +14,7 @@ so it renumbers whenever an unrelated declaration earlier in the compilation
 order is added, removed, or reordered — even when the specialization itself
 did not change.
 
-Measurements on the compiler fork (`feat/stable-specialization-names-2`)
+Measurements on the compiler fork (`feat/stable-specialization-names-rewrite`)
 quantified this: across a perturbation of the standard library and a
 representative source file, 96.5% of counter-derived specialization names
 changed between two otherwise-equivalent builds. That churn breaks anything
@@ -38,6 +38,48 @@ kind the compiler can mint, and `scripts/class-id-report` censuses the
 generated `.class` files after the fact, without invoking the compiler, to
 tell counter-derived ids apart from hash-derived ones and measure how many
 of each survive an unrelated edit.
+
+### The five id-minting families
+
+A generated JVM name can carry a `$id` from five distinct sites in the
+compiler, each landed as its own commit against the fork
+(`wstein/flix-fork`, tag `v0.75.3+stable.names.1`) and now content-addressed:
+
+| Family | Symbol kind | Phase | Canonical key |
+| --- | --- | --- | --- |
+| Specialized def | `DefnSym` | `monomorph.Specialization` | `SpecializationKey.of(defn.sym, tpe)` — the originating def plus a canonicalized rendering of the specialization's type: type variables numbered by first occurrence (not by inference-allocated symbol), aliases resolved to their underlying type, associated types reduced, record/schema rows sorted, effects in canonical form |
+| Lifted lambda / closure | `DefnSym` | `LambdaLift` | `s"$sym#lift$index"` — the enclosing def's symbol (itself content-addressed once specialized) plus an index counted *within that def alone*, not across the program |
+| Polymorphic struct | `StructSym` | `Eraser` | `ErasureKey.ofStruct(sym, targs)` — the struct's name plus its erased type arguments. Simpler than the def-level key because `SimpleType` is already erased: no type variables, aliases, or effects left to canonicalize |
+| Enum case | `EnumSym` | `Eraser` | `ErasureKey.ofEnum(sym, targs)` — same shape as the struct key. The per-case suffix (e.g. `$None`) is appended afterward from the case's own name; it is not itself part of what gets hashed |
+| Anonymous Java class | `AnonClassSym` | `monomorph.Specialization` | `s"$enclosing#anon$index"` — the enclosing *specialized* def (already content-addressed) plus an index counted within that one specialization, not globally |
+
+None of the five consumes a `GenSym` id any more; `StableName.of` derives
+each one from its key instead. Commits, in landing order: `17816c4965`
+(defs), `65ccba13c1` (anonymous classes), `90f095cf59` (lifted
+lambdas/closures), `90fb695bfb` (enums and structs, via the new
+`ErasureKey`).
+
+This lab now exercises all five: `src/Main.flix`'s specialization-coverage
+section (`describeShape`/`manyInstantiations` for defs, `liftedClosures`
+for closures, `DemoBox` for structs, `anonClassDemo` for anonymous classes,
+and the enum literals throughout for enum cases), censused by
+`scripts/class-id-report`. Running that census against an unrelated
+project's build (`flix_game_engine`) during this session found exactly
+three id-bearing symbols in 305 class files — a specialized `println` def
+and two enum cases (`List`'s `Nil`, `Option`'s `None`) — which is a
+legitimate low count for a program that is mostly monomorphic already, not
+a detection gap: tracing each id back through the generated symbol CSV
+confirmed all three against the table above.
+
+One methodology note on `scripts/class-id-report`'s own output: it reports
+symbols in three JVM kinds — `class`, `field`, `method` — but that is a
+property of the census, not of the families. A field or method symbol
+string is built by prefixing the *class's* name (e.g.
+`List$13bak6wr2qs5e$Nil::<clinit>`), so an id that appears in a class name
+is picked up on every member row of that class too, regardless of which
+family minted it. A class carries an id if and only if the family that
+generated it does; which member rows also show it is just where the class
+name happens to be substring-repeated.
 
 ### Why SHA-256 over XXH3-64 or another non-cryptographic hash
 
@@ -85,6 +127,72 @@ hashes never differ by case alone. The cost is a longer, fixed-width
 13-character suffix instead of a shorter mixed-case one, which is accepted
 in exchange for not having a platform-specific failure mode.
 
+### Collision policy
+
+Two different kinds of collision are possible here, and the fork handles
+them differently.
+
+**Semantic-key collisions** — two conceptually different specializations
+that would render the same canonical key — are avoided structurally rather
+than by comparing key strings: every specialization cache is keyed on the
+original structured pair (`(sym, tpe)` for defs, `(sym, targs)` for enums
+and structs), not on the rendered string. This is not just caution for its
+own sake. During development of the def-level key, dropping the def's own
+id from it merged a trait's default implementation with an instance
+implementation specialized at the same type — both compiled successfully,
+and the merged program hung in the Datalog solver rather than failing to
+build. Comparing rendered key strings would not have caught that; comparing
+the structured pair does, because the two remain distinct at that level
+even when they would render identically.
+
+**Hash collisions** — two genuinely different keys producing the same
+64-bit id — are *detected*, not prevented. `StableName` truncates a SHA-256
+digest to its leading 64 bits (36^13 ≈ 2^67.2, deliberately close to that
+width), and every family that mints one now checks the claim before
+accepting it: `Eraser` (enum and struct specialization), `Specialization`
+(def specialization and anonymous classes), `Namer` (instance-member ids),
+and `Deriver` (derived-def ids for `Eq`/`Order`/`ToString`/`Hash`/`Coerce`)
+each throw `InternalCompilerException` on a genuine collision rather than
+silently letting one specialization overwrite another's cache entry. This
+closes the failure mode the previous version of this section described —
+collision used to be silent; now it is a loud, deterministic build failure.
+
+Detection, not prevention, because nothing makes a 64-bit collision
+impossible — only unlikely enough to accept. The birthday bound,
+`P(any collision) ≈ n²/2⁶⁵` for `n` minted ids, gives the actual numbers
+rather than an assertion: at 230,000 ids (this compiler's own measured
+baseline for a full standard-library build), `P ≈ 1.4×10⁻⁹` — about one in
+700 million. At 10 million ids, forty times larger than any real Flix
+program compiles to today, `P ≈ 2.7×10⁻⁶` — about one in 370,000. Widening
+to 128 bits was considered and rejected: it roughly doubles every generated
+name (13 → 26 characters) to defend against a scenario that would already
+need a compile several orders of magnitude larger than anything real before
+the odds became worth worrying about.
+
+Two of the five families above — `Namer` and `Deriver` — mint an id that
+never appears directly in a generated JVM name: an instance member's or
+derived def's id becomes part of the input to that def's own
+`SpecializationKey` hash once it is specialized, not a literal suffix on
+its own. They still need the identical collision guard, for the identical
+reason: if two unrelated instance members or derived defs were allowed to
+share an id, they would become the same `Symbol.DefnSym` — indistinguishable
+to every phase downstream — long before a class name ever entered the
+picture.
+
+The first attempt at this guard had a real bug, worth recording since it is
+easy to reintroduce: `Namer` and `Deriver` originally kept their claimed-id
+registry keyed by the raw 64-bit `Long` alone. Two unrelated ids from
+different families — an `Eq[Foo]#eq` key and an unrelated
+`Order[Bar]#compare` key — hashing alike would have thrown, even though
+`"Eq.eq"` and `"Order.compare"` render to different final symbols and were
+never actually going to collide as JVM names. `Symbol.DefnSym.equals`
+already compares id, namespace, and text together, so keying the registry
+by the constructed `DefnSym` itself — matching what `Eraser`'s
+`EnumSym`/`StructSym` check and `Specialization`'s pre-existing def check
+already did — fixed it. The lesson generalizes: a collision guard for a
+content-addressed name must compare the same identity the name itself is
+built from, not a proxy for it.
+
 ## Consequences
 
 - Specialization names become stable across recompiles that do not touch the
@@ -102,3 +210,14 @@ in exchange for not having a platform-specific failure mode.
   originating symbol's fully qualified name and the specialization's
   resolved type arguments — rather than from anything positional, or the
   scheme degenerates back into the problem it fixes.
+- A symbol named from its content never allocates a `GenSym` id, so any
+  facility that correlates a generated name back to "the *n*th id minted"
+  — an `oid` tracer/debugging join, for instance — no longer always finds a
+  row for a content-addressed symbol. A tracer test caught this during
+  development; it is expected behavior now, not a bug to fix.
+- A compile can now fail outright on a hash collision instead of silently
+  merging two unrelated specializations into one class. That trade is
+  accepted deliberately (see Collision policy), but it means a future
+  change that increases how many ids a typical compile mints — a new
+  id-bearing symbol kind, say — should re-check the birthday-bound math
+  above rather than assume the existing margin still holds.
