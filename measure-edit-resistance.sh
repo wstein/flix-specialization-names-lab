@@ -15,8 +15,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${1:-${SCRIPT_DIR}}"
-SRC="${PROJECT_DIR}/src/hello.flix"
+PROJECT_DIR="$(cd "${1:-${SCRIPT_DIR}}" && pwd)"
 JAR="${PROJECT_DIR}/../../out/flix/assembly.dest/out.jar"
 
 if [[ ! -f "${JAR}" ]]; then
@@ -25,33 +24,49 @@ if [[ ! -f "${JAR}" ]]; then
 fi
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "${WORK}"; cp -f "${WORK}.orig" "${SRC}" 2>/dev/null || true' EXIT
-cp "${SRC}" "${WORK}.orig"
+RUN_DIR="${WORK}/project"
+mkdir -p "${RUN_DIR}"
+cp "${PROJECT_DIR}/flix.toml" "${RUN_DIR}/"
+cp -R "${PROJECT_DIR}/src" "${RUN_DIR}/"
+if [[ -d "${PROJECT_DIR}/lib" ]]; then
+    cp -R "${PROJECT_DIR}/lib" "${RUN_DIR}/"
+fi
+SRC="${RUN_DIR}/src/hello.flix"
+ORIGINAL="${WORK}/hello.flix.orig"
+trap 'rm -rf "${WORK}"' EXIT
+cp "${SRC}" "${ORIGINAL}"
 
-# Records the sorted class file names of a build into $1.
+# Records each generated class path with the SHA-256 of its bytecode into $1.
 snapshot() {
-    rm -rf "${PROJECT_DIR}/build"
-    (cd "${PROJECT_DIR}" && java -jar "${JAR}" build-classes >/dev/null 2>&1)
-    (cd "${PROJECT_DIR}/build/class" && find . -name '*.class' | sort) > "$1"
+    rm -rf "${RUN_DIR}/build"
+    if ! (cd "${RUN_DIR}" && java -jar "${JAR}" build-classes) > "${1}.log" 2>&1; then
+        echo "Error: compilation failed; compiler output follows." >&2
+        cat "${1}.log" >&2
+        return 1
+    fi
+    (cd "${RUN_DIR}/build/class" && find . -name '*.class' | sort | xargs shasum -a 256) > "$1"
 }
 
-# Reports what share of the names in $1 also appear in $2.
+# Reports both name survival and byte-identical class reuse from $1 to $2.
 #
-# Also reports whether the edit reached code generation at all. An edit that adds no class
-# and removes none produced identical output, which for a comment is the result we want and
-# for an inserted lambda means the measurement did not measure anything — an unused binding
-# is optimized away before it can be lifted.
+# A path may survive while its bytecode changes: with occurrence-indexed generated names,
+# inserting a lambda can make a different lambda inherit an earlier path. Class hashes expose
+# that reassignment, so a high name-survival score is not misread as cache reuse.
 report() {
     local label="$1" before="$2" after="$3"
     python3 - "$label" "$before" "$after" <<'PY'
 import sys
 label, before, after = sys.argv[1], sys.argv[2], sys.argv[3]
-a = {l.strip() for l in open(before)}
-b = {l.strip() for l in open(after)}
-kept = len(a & b)
-added, removed = len(b - a), len(a - b)
-effect = "output unchanged" if a == b else f"+{added} -{removed} classes"
-print(f"  {label:<34} {100*kept/len(a):6.2f}% survive   ({removed} of {len(a)} renamed, {effect})")
+def read(path):
+    return dict(line.strip().split(None, 1) for line in open(path) if line.strip())
+a, b = read(before), read(after)
+shared = a.keys() & b.keys()
+same_bytes = sum(a[p] == b[p] for p in shared)
+added, removed = len(b.keys() - a.keys()), len(a.keys() - b.keys())
+name_pct = 100 * len(shared) / len(a) if a else 100
+byte_pct = 100 * same_bytes / len(a) if a else 100
+effect = "output unchanged" if a == b else f"+{added} -{removed} classes, {len(shared)-same_bytes} changed at same path"
+print(f"  {label:<34} names {name_pct:6.2f}%  bytes {byte_pct:6.2f}%   ({effect})")
 PY
 }
 
@@ -59,15 +74,19 @@ echo "Baseline"
 snapshot "${WORK}/base.txt"
 snapshot "${WORK}/base2.txt"
 report "rebuild, no change" "${WORK}/base.txt" "${WORK}/base2.txt"
+if ! cmp -s "${WORK}/base.txt" "${WORK}/base2.txt"; then
+    echo "Error: clean builds differ; edit-resistance results would be inconclusive." >&2
+    exit 1
+fi
 
 # Each perturbation is applied to a pristine copy of the source, so they do not compound.
 perturb() {
     local label="$1" script="$2"
-    cp "${WORK}.orig" "${SRC}"
+    cp "${ORIGINAL}" "${SRC}"
     python3 -c "$script" "${SRC}"
     snapshot "${WORK}/after.txt"
     report "${label}" "${WORK}/base.txt" "${WORK}/after.txt"
-    cp "${WORK}.orig" "${SRC}"
+    cp "${ORIGINAL}" "${SRC}"
 }
 
 echo
@@ -132,14 +151,28 @@ s=s.replace("    a + b + c + d + e + f + g + h + i\n", "    a + b + c + d + e + 
 open(p,"w").write(s)
 '
 
+# This changes the specialization worklist directly: `List.map` already has several
+# concrete instantiations above, and this adds one more at Int8. Existing specializations
+# should preserve both their names and bytecode; only the new Int8 specialization should be
+# added. Unlike the unrelated-def row, this exercises the source of historical GenSym churn.
+perturb "add a List.map specialization" '
+import sys
+p=sys.argv[1]; s=open(p).read()
+old="    a + b + c + d + e + f + g + h + i\n"
+new="    let j = List.map(x -> x + 1i8, 1i8 :: 2i8 :: Nil) |> List.length;\n    a + b + c + d + e + f + g + h + i + j\n"
+assert old in s, "anchor missing"
+s=s.replace(old,new,1)
+open(p,"w").write(s)
+'
+
 echo
-echo "A name that survives is one a downstream cache can keep."
+echo "A surviving name can be reused only when its class bytes also survive; both measures are shown."
 echo
 echo "The 'lifted closure ahead of two' row is the direct test of renumbering: liftedClosures"
 echo "has two lambdas lifted out of it, and the edit adds a third ahead of both. Lifted names"
-echo "are keyed on an occurrence index within the enclosing definition, so inserting one was"
-echo "expected to shift the others and rename them. It does not. Why the index is unaffected"
-echo "has not been established, so read this as an observation, not a guarantee."
+echo "are keyed on an occurrence index within the enclosing definition. Name survival alone"
+echo "can therefore conceal a different lambda taking the same path; the byte-survival column"
+echo "distinguishes unchanged artifacts from a same-path reassignment."
 echo
 echo "The other lambdas in this program are inlined into specializations of the library"
 echo "functions they are passed to, so they are lifted out of those instead. That is why a"
