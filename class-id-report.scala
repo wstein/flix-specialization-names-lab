@@ -11,7 +11,7 @@ import scala.util.Using
 /**
  * Extracts generated IDs and JVM symbols from an existing class directory.
  *
- * Usage: ./trace-fresh-ids.scala [class-directory] [--output-dir directory] [--json | --markdown]
+ * Usage: ./generated-class-id-report.scala [class-directory] [--output-dir directory] [--json]
  *
  * The script never invokes the Flix compiler. It supports both decimal GenSym
  * suffixes from older output and fixed-width base-36 SHA-256 suffixes from newer output.
@@ -50,7 +50,7 @@ object TraceFreshIds extends App {
 }
 
 object Arguments {
-  private val Usage = "Usage: trace-fresh-ids.scala [class-directory] [--output-dir directory] [--json | --markdown]"
+  private val Usage = "Usage: generated-class-id-report.scala [class-directory] [--output-dir directory] [--json]"
 
   def parse(args: List[String]): Config = {
     var classDir = Paths.get("build/class")
@@ -66,7 +66,6 @@ object Arguments {
 
     while (remaining.nonEmpty) remaining match {
       case "--json" :: tail => select(ReportFormat.Json); remaining = tail
-      case "--markdown" :: tail => select(ReportFormat.Markdown); remaining = tail
       case ("--output-dir" | "-o") :: directory :: tail => outputDir = Paths.get(directory); remaining = tail
       case "--help" :: _ => println(Usage); sys.exit(0)
       case directory :: tail if !directory.startsWith("-") && !classDirSet =>
@@ -86,7 +85,6 @@ sealed trait ReportFormat
 object ReportFormat {
   case object Text extends ReportFormat
   case object Json extends ReportFormat
-  case object Markdown extends ReportFormat
 }
 
 case class Config(classDir: Path, outputDir: Path, format: ReportFormat)
@@ -98,7 +96,6 @@ object Reports {
   def render(report: Report, format: ReportFormat): String = format match {
     case ReportFormat.Text => text(report)
     case ReportFormat.Json => json(report)
-    case ReportFormat.Markdown => markdown(report)
   }
 
   private def text(report: Report): String = List(
@@ -115,22 +112,6 @@ object Reports {
 
   private def json(report: Report): String =
     s"""{"class_directory":"${escapeJson(report.classDir.toString)}","class_files":${report.classFiles},"symbols":${report.symbols},"unique_generated_ids":${report.uniqueIds},"id_kinds":{"sequential_counter":${report.counters},"sha256_hash_derived":${report.hashes}},"outputs":{"symbols_csv":"${escapeJson(report.symbolsFile.toString)}","ids_txt":"${escapeJson(report.idsFile.toString)}"}}"""
-
-  private def markdown(report: Report): String = List(
-    "# Generated-class ID census",
-    "",
-    "| Metric | Value |",
-    "| --- | ---: |",
-    s"| Class directory | `${report.classDir}` |",
-    s"| Class files | ${report.classFiles} |",
-    s"| Symbols extracted | ${report.symbols} |",
-    s"| Unique generated IDs | ${report.uniqueIds} |",
-    s"| Sequential counter IDs | ${report.counters} |",
-    s"| SHA-256 hash-derived IDs | ${report.hashes} |",
-    "",
-    s"Symbols: `${report.symbolsFile}`  ",
-    s"IDs: `${report.idsFile}`"
-  ).mkString(System.lineSeparator())
 
   private def escapeJson(value: String): String = value.flatMap {
     case '"' => "\\\""
