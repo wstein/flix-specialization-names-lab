@@ -33,8 +33,8 @@ is being specialized, not of compilation order, so it is stable across
 recompiles and changes only when the thing it names actually changes.
 
 This lab exists to validate that decision independently of the compiler
-fork: `src/hello.flix` is a demo written to exercise every id-bearing symbol
-kind the compiler can mint, and `class-id-report.scala` censuses the
+fork: `src/Main.flix` is a demo written to exercise every id-bearing symbol
+kind the compiler can mint, and `scripts/class-id-report` censuses the
 generated `.class` files after the fact, without invoking the compiler, to
 tell counter-derived ids apart from hash-derived ones and measure how many
 of each survive an unrelated edit.
