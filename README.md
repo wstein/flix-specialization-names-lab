@@ -1,19 +1,50 @@
-# flix-template
+# flix-specialization-names-lab
 
-[![Build and Test](https://github.com/wstein/flix-template/actions/workflows/build-and-test.yaml/badge.svg)](https://github.com/wstein/flix-template/actions/workflows/build-and-test.yaml)
-[![Flix](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwstein%2Fflix-template%2Fmain%2F.flixw%2Flock.toml&query=%24.compiler.version&label=flix&color=blue)](.flixw/lock.toml)
-[![flixw](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwstein%2Fflix-template%2Fmain%2F.flixw%2Flock.toml&query=%24.wrapperVersion&label=flixw&color=blue)](https://github.com/wstein/flixw)
+[![Build and Test](https://github.com/wstein/flix-specialization-names-lab/actions/workflows/build-and-test.yaml/badge.svg)](https://github.com/wstein/flix-specialization-names-lab/actions/workflows/build-and-test.yaml)
+[![Flix](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwstein%2Fflix-specialization-names-lab%2Fmain%2F.flixw%2Flock.toml&query=%24.compiler.version&label=flix&color=blue)](.flixw/lock.toml)
+[![flixw](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwstein%2Fflix-specialization-names-lab%2Fmain%2F.flixw%2Flock.toml&query=%24.wrapperVersion&label=flixw&color=blue)](https://github.com/wstein/flixw)
 [![Java](https://img.shields.io/badge/java-21%2B-blue)](https://adoptium.net/temurin/releases/?version=21)
-[![License](https://img.shields.io/github/license/wstein/flix-template?color=blue)](LICENSE)
+[![License](https://img.shields.io/github/license/wstein/flix-specialization-names-lab?color=blue)](LICENSE)
 
-A GitHub template for starting a [Flix](https://flix.dev) project, and a
-worked example of [`flixw`](https://github.com/wstein/flixw) — a
-repository-local bootstrap that fetches the compiler the project pins instead
-of relying on whatever `flix` happens to be installed.
+A lab for studying how the [Flix](https://flix.dev) compiler names the
+classes it generates when it specializes polymorphic code. Historically those
+names carried a sequential counter suffix (`$1234`) that renumbers on almost
+any unrelated edit; a fork under study replaces it with a fixed-width,
+content-addressed SHA-256 suffix (13 lowercase base-36 characters) so a
+specialization's name is stable across recompiles and only changes when the
+code it names actually changes.
+
+This repository is scaffolded from
+[`flix-template`](https://github.com/wstein/flix-template) and inherits its
+[`flixw`](https://github.com/wstein/flixw) bootstrap — a repository-local
+wrapper that fetches the pinned compiler instead of relying on whatever
+`flix` happens to be installed, which matters here because the lab needs to
+run two different compiler builds (counter-suffix vs. hash-suffix) against
+the same source.
+
+## What the lab measures
+
+The workflow, carried over from the exploration on the
+`flix-specialization-names-lab` branch of the compiler fork, is:
+
+1. **`src/hello.flix`** — a demo deliberately written to touch every
+   id-bearing symbol kind the compiler can mint: specialized defs, lifted
+   lambdas, a polymorphic struct instantiated at many types, an anonymous
+   Java class, and a def called at a dozen distinct type arguments. The goal
+   is a source file where nearly every generated class name is exercised at
+   least once.
+2. **`class-id-report.scala`** — a `scala-cli` script that reads an already
+   built `build/class` directory (it never invokes the compiler itself),
+   extracts every generated symbol name from the `.class` files' constant
+   pools, and censuses which ids are sequential counters versus SHA-256
+   hash-derived. It writes a CSV of every symbol plus a flat list of unique
+   ids, and reports counts of each id kind.
+3. Comparing that census across recompiles — with and without unrelated
+   source edits — is what shows whether a naming scheme is actually stable:
+   a hash-derived id should reappear unchanged; a counter-derived one
+   renumbers as soon as an earlier declaration shifts.
 
 ## Quick start
-
-Click **Use this template**, clone your copy, and run it:
 
 ```sh
 ./flixw run          # .\flixw.cmd run on Windows
@@ -37,9 +68,10 @@ it outside the repository, and runs it. Later commands reuse the cache.
 ```
 .
 ├── src/
-│   └── Main.flix                 mod Hello, and the main that prints its greeting
+│   └── Main.flix                 template placeholder — to be replaced by the
+│                                  hello.flix demo from the lab branch
 ├── test/
-│   └── TestMain.flix             @Test functions covering Hello.greeting
+│   └── TestMain.flix             template placeholder @Test functions
 ├── .flixw/
 │   ├── flixw.java                the wrapper proper — one dependency-free Java file
 │   └── lock.toml                 the exact compiler, its URL, and its SHA-256
@@ -98,7 +130,7 @@ the thing worth reading before merging.
 
 `.github/workflows/docs.yaml` runs `./flixw doc` on every push to `main` and
 publishes this project's own pages to GitHub Pages — for this repository, at
-<https://wstein.github.io/flix-template/>.
+<https://wstein.github.io/flix-specialization-names-lab/>.
 
 `flix doc` renders the whole standard library alongside the project and has no
 option to narrow that: `--Xlib` decides what is *compiled*, and without the
@@ -120,18 +152,13 @@ Pages has to be enabled once, under **Settings → Pages** with source
 with `pages: write`. Until it is, the documentation is still built and the run
 warns rather than failing, so a fresh copy of this template does not start red.
 
-## After you template this
+## Status
 
-1. `flix.toml` — set `name`, `description`, `version` and `authors`. The package
-   name is yours to choose; nothing requires it to match the repository name.
-2. `LICENSE` — replace the copyright line, or the whole license.
-3. `src/` and `test/` — replace the greeting with your own code.
-4. This README — the badge URLs and the documentation link. Until you point
-   them at your own repository they report this one's state, not yours. CI
-   fails on the first push until you do, and names every URL still pointing
-   here.
-5. **Settings → Pages**, source **GitHub Actions**, if you want the published
-   documentation. Skip it and `docs.yaml` just warns.
+This repository was scaffolded from `flix-template` and still carries its
+placeholder `src/Main.flix` and `test/TestMain.flix`. Porting over the actual
+lab content — `src/hello.flix`, `class-id-report.scala`, and the `flix.toml`
+metadata from the `flix-specialization-names-lab` branch of the compiler
+fork — is a follow-up step, not yet done here.
 
 The Flix and `flixw` badges read `.flixw/lock.toml` directly, so re-pinning with
 `./flixw pin <version>` updates them without touching this file.
