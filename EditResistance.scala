@@ -1,3 +1,6 @@
+#!/usr/bin/env -S scala-cli shebang
+//> using scala "2.13.16"
+
 /*
  * Copyright 2026 Werner Stein
  *
@@ -42,8 +45,15 @@ import java.security.MessageDigest
   * Run with:
   *
   * {{{
-  *   ./mill flix.runMain ca.uwaterloo.flix.tools.EditResistance [source.flix]
+  *   ./edit-resistance [source.flix]
   * }}}
+  *
+  * `edit-resistance` resolves the Flix compiler jar `flixw` already downloaded and
+  * digest-verified for the version pinned in `.flixw/lock.toml`, then hands it to
+  * `scala-cli` as `--jar` -- a `using jar` directive cannot be computed at build time, so
+  * this script alone has no classpath. Running `scala-cli run EditResistance.scala`
+  * directly fails to compile with "object api is not a member of package
+  * ca.uwaterloo.flix" for that reason.
   *
   * The compiler runs in this process rather than as a subprocess, so no assembled jar and
   * no scratch project are needed, and the whole sweep costs one compile per perturbation.
@@ -61,7 +71,7 @@ object EditResistance {
   /**
     * The default program to measure.
     */
-  private val DefaultSource: Path = Paths.get("examples/hello/src/hello.flix")
+  private val DefaultSource: Path = Paths.get("src/Main.flix")
 
   def main(args: Array[String]): Unit = {
     val path = args.headOption.map(Paths.get(_)).getOrElse(DefaultSource)
@@ -104,7 +114,13 @@ object EditResistance {
   private def compile(source: String): Map[String, String] = {
     implicit val sctx: SecurityContext = SecurityContext.Unrestricted
     val flix = new Flix()
-    flix.setOptions(Options.Default.copy(progress = false, incremental = false))
+    // threads = 1: Options.Default runs specialization across every available core, and
+    // sequential-counter IDs are handed out in whatever order threads reach
+    // genSym.freshId() -- so two clean compiles of the same byte-identical source can
+    // already disagree on names before any perturbation is applied. Forcing one thread
+    // makes id assignment order deterministic, so a later diff reflects the edit, not
+    // scheduling noise.
+    flix.setOptions(Options.Default.copy(progress = false, incremental = false, threads = 1))
     flix.addVirtualPath(CompilerConstants.VirtualTestFile, source)
     flix.compile() match {
       case Validation.Success(result) =>
