@@ -9,13 +9,15 @@ import scala.util.Using
 /**
  * Extracts generated IDs and JVM symbols from an existing class directory.
  *
- * Usage: ./trace-fresh-ids.scala [class-directory] [--output-dir directory]
+ * Usage: ./trace-fresh-ids.scala [class-directory] [--output-dir directory] [--json | --markdown]
  *
  * The script never invokes the Flix compiler. It supports both decimal GenSym
  * suffixes from older output and fixed-width base-36 SHA-256 suffixes from newer output.
  */
 object TraceFreshIds extends App {
-  val (classDir, outputDir) = Arguments.parse(args.toList)
+  val config = Arguments.parse(args.toList)
+  val classDir = config.classDir
+  val outputDir = config.outputDir
   if (!Files.isDirectory(classDir)) {
     Console.err.println(s"Class directory not found: $classDir")
     sys.exit(1)
@@ -40,26 +42,103 @@ object TraceFreshIds extends App {
   Files.writeString(symbolsFile, Csv.header + System.lineSeparator + rows.map(_.csv).mkString(System.lineSeparator()) + (if (rows.nonEmpty) System.lineSeparator() else ""))
   Files.writeString(idsFile, ids.toList.sortBy(Ids.order).mkString("", System.lineSeparator(), if (ids.nonEmpty) System.lineSeparator() else ""))
 
-  val counters = ids.count(Ids.isCounter)
-  println(s"Generated-class ID census")
-  println(s"  directory: $classDir")
-  println(s"  class files: ${classFiles.size}")
-  println(s"  symbols: ${rows.size}")
-  println(s"  sequential counter IDs: $counters")
-  println(s"  SHA-256 hash-derived IDs: ${ids.size - counters}")
-  println(s"  symbols CSV: $symbolsFile")
-  println(s"  IDs list: $idsFile")
+  val report = Report(classDir, classFiles.size, rows.size, ids.size, ids.count(Ids.isCounter), symbolsFile, idsFile)
+  println(Reports.render(report, config.format))
 }
 
 object Arguments {
-  def parse(args: List[String]): (Path, Path) = args match {
-    case Nil => (Paths.get("build/class"), Paths.get("."))
-    case classDir :: Nil if !classDir.startsWith("-") => (Paths.get(classDir), Paths.get("."))
-    case classDir :: "--output-dir" :: outputDir :: Nil => (Paths.get(classDir), Paths.get(outputDir))
-    case classDir :: "-o" :: outputDir :: Nil => (Paths.get(classDir), Paths.get(outputDir))
-    case _ =>
-      Console.err.println("Usage: trace-fresh-ids.scala [class-directory] [--output-dir directory]")
-      sys.exit(2)
+  private val Usage = "Usage: trace-fresh-ids.scala [class-directory] [--output-dir directory] [--json | --markdown]"
+
+  def parse(args: List[String]): Config = {
+    var classDir = Paths.get("build/class")
+    var classDirSet = false
+    var outputDir = Paths.get(".")
+    var format: ReportFormat = ReportFormat.Text
+    var remaining = args
+
+    def select(next: ReportFormat): Unit = {
+      if (format != ReportFormat.Text) fail()
+      format = next
+    }
+
+    while (remaining.nonEmpty) remaining match {
+      case "--json" :: tail => select(ReportFormat.Json); remaining = tail
+      case "--markdown" :: tail => select(ReportFormat.Markdown); remaining = tail
+      case ("--output-dir" | "-o") :: directory :: tail => outputDir = Paths.get(directory); remaining = tail
+      case "--help" :: _ => println(Usage); sys.exit(0)
+      case directory :: tail if !directory.startsWith("-") && !classDirSet =>
+        classDir = Paths.get(directory); classDirSet = true; remaining = tail
+      case _ => fail()
+    }
+    Config(classDir, outputDir, format)
+  }
+
+  private def fail(): Nothing = {
+    Console.err.println(Usage)
+    sys.exit(2)
+  }
+}
+
+sealed trait ReportFormat
+object ReportFormat {
+  case object Text extends ReportFormat
+  case object Json extends ReportFormat
+  case object Markdown extends ReportFormat
+}
+
+case class Config(classDir: Path, outputDir: Path, format: ReportFormat)
+case class Report(classDir: Path, classFiles: Int, symbols: Int, uniqueIds: Int, counters: Int, symbolsFile: Path, idsFile: Path) {
+  def hashes: Int = uniqueIds - counters
+}
+
+object Reports {
+  def render(report: Report, format: ReportFormat): String = format match {
+    case ReportFormat.Text => text(report)
+    case ReportFormat.Json => json(report)
+    case ReportFormat.Markdown => markdown(report)
+  }
+
+  private def text(report: Report): String = List(
+    "Generated-class ID census",
+    s"  directory: ${report.classDir}",
+    s"  class files: ${report.classFiles}",
+    s"  symbols: ${report.symbols}",
+    s"  unique generated IDs: ${report.uniqueIds}",
+    s"  sequential counter IDs: ${report.counters}",
+    s"  SHA-256 hash-derived IDs: ${report.hashes}",
+    s"  symbols CSV: ${report.symbolsFile}",
+    s"  IDs list: ${report.idsFile}"
+  ).mkString(System.lineSeparator())
+
+  private def json(report: Report): String =
+    s"""{"class_directory":"${escapeJson(report.classDir.toString)}","class_files":${report.classFiles},"symbols":${report.symbols},"unique_generated_ids":${report.uniqueIds},"id_kinds":{"sequential_counter":${report.counters},"sha256_hash_derived":${report.hashes}},"outputs":{"symbols_csv":"${escapeJson(report.symbolsFile.toString)}","ids_txt":"${escapeJson(report.idsFile.toString)}"}}"""
+
+  private def markdown(report: Report): String = List(
+    "# Generated-class ID census",
+    "",
+    "| Metric | Value |",
+    "| --- | ---: |",
+    s"| Class directory | `${report.classDir}` |",
+    s"| Class files | ${report.classFiles} |",
+    s"| Symbols extracted | ${report.symbols} |",
+    s"| Unique generated IDs | ${report.uniqueIds} |",
+    s"| Sequential counter IDs | ${report.counters} |",
+    s"| SHA-256 hash-derived IDs | ${report.hashes} |",
+    "",
+    s"Symbols: `${report.symbolsFile}`  ",
+    s"IDs: `${report.idsFile}`"
+  ).mkString(System.lineSeparator())
+
+  private def escapeJson(value: String): String = value.flatMap {
+    case '"' => "\\\""
+    case '\\' => "\\\\"
+    case '\b' => "\\b"
+    case '\f' => "\\f"
+    case '\n' => "\\n"
+    case '\r' => "\\r"
+    case '\t' => "\\t"
+    case c if c < ' ' => f"\\u${c.toInt}%04x"
+    case c => c.toString
   }
 }
 
