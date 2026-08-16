@@ -3,6 +3,8 @@
 
 import java.io.{DataInputStream, BufferedInputStream}
 import java.nio.file.{Files, Path, Paths}
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import scala.collection.JavaConverters._
 import scala.util.Using
 
@@ -36,8 +38,9 @@ object TraceFreshIds extends App {
   }
 
   val ids = rows.iterator.flatMap(row => Ids.in(row.symbol)).toSet
-  val symbolsFile = outputDir.resolve("generated-class-symbols.csv")
-  val idsFile = outputDir.resolve("generated-class-ids.txt")
+  val timestamp = DateTimeFormatter.ofPattern("yyMMdd-HHmm").format(LocalDateTime.now())
+  val symbolsFile = outputDir.resolve(s"symbols-$timestamp.csv")
+  val idsFile = outputDir.resolve(s"ids-$timestamp.txt")
 
   Files.writeString(symbolsFile, Csv.header + System.lineSeparator + rows.map(_.csv).mkString(System.lineSeparator()) + (if (rows.nonEmpty) System.lineSeparator() else ""))
   Files.writeString(idsFile, ids.toList.sortBy(Ids.order).mkString("", System.lineSeparator(), if (ids.nonEmpty) System.lineSeparator() else ""))
