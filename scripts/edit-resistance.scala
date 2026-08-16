@@ -20,7 +20,7 @@ package ca.uwaterloo.flix.tools
 
 import ca.uwaterloo.flix.api.{CompilerConstants, Flix}
 import ca.uwaterloo.flix.language.ast.shared.SecurityContext
-import ca.uwaterloo.flix.util.{Options, Validation}
+import ca.uwaterloo.flix.util.{Build, Options, Validation}
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
@@ -121,7 +121,13 @@ object EditResistance {
     // already disagree on names before any perturbation is applied. Forcing one thread
     // makes id assignment order deterministic, so a later diff reflects the edit, not
     // scheduling noise.
-    flix.setOptions(Options.Default.copy(progress = false, incremental = false, threads = 1))
+    //
+    // build = Production: Options.Default is Development, but neither stock flix/flix
+    // nor this lab's fork actually switch build-jar/build-fatjar to Production -- both
+    // hardcode Development regardless of command. Measuring under Production here is a
+    // deliberate choice, not a match to what those commands do today: it is the build a
+    // shipped artifact would actually use, and is the mode this lab cares about.
+    flix.setOptions(Options.Default.copy(progress = false, incremental = false, threads = 1, build = Build.Development))
     flix.addVirtualPath(CompilerConstants.VirtualTestFile, source)
     flix.compile() match {
       case Validation.Success(result) =>
