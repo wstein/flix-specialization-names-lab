@@ -1,8 +1,28 @@
+# Flix build output
+build/
 *.fpkg
 *.jar
-.GITHUB_TOKEN
+crash_report_*.txt
 artifact/
-build/
 lib/
 site/
-crash_report_*.txt
+
+# scala-cli, for scripts/*.scala
+.scala-build/
+.bsp/
+
+# Reports from scripts/class-id-report; several megabytes per run.
+symbols-*.csv
+ids-*.txt
+
+# Machine-specific, never meant to be shared -- see .envrc.example
+.envrc
+.envrc.local
+.GITHUB_TOKEN
+
+# Editor / OS / local Claude Code settings
+out/
+.DS_Store
+
+# Local Claude Code settings
+.claude/settings.local.json
