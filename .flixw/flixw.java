@@ -58,7 +58,7 @@ import java.util.regex.Pattern;
  */
 public final class flixw {
 
-    static final String WRAPPER_VERSION = "0.21.0";
+    static final String WRAPPER_VERSION = "0.22.0";
     static final String WRAPPER_DIR = ".flixw";
     static final int MIN_JAVA = 21;
     /**
@@ -149,11 +149,39 @@ public final class flixw {
             if (Character.isWhitespace(c) || c == '/' || c == '\\')
                 throw w002(where + ": illegal character in version " + q(v));
         if (v.contains("..")) throw w002(where + ": '..' in version " + q(v));
-        if (v.startsWith("v")) throw w002(where + ": strip the leading 'v' from " + q(v));
+        // Only when stripping the tag prefix would actually leave a version. `pin` accepts
+        // that form outright, so anything reaching here still spelled with a leading `v` is
+        // either the manifest -- Flix's field, which takes x.x.x alone -- or not a version
+        // at all, and telling someone to strip a `v` from `vNext` names the wrong problem.
+        if (v.startsWith("v") && SEMVERISH.matcher(v.substring(1)).matches())
+            throw w002(where + ": strip the leading 'v' from " + q(v));
         if (!SEMVERISH.matcher(v).matches())
             throw w002(where + ": " + q(v) + " is not an exact version"
                      + "\n       ranges, wildcards and empty suffixes are not accepted");
         return v;
+    }
+
+    /**
+     * Accepts the release tag where a version is expected: {@code v0.75.2} means
+     * {@code 0.75.2}.
+     *
+     * GitHub shows the tag, not the version.  The releases page, the tag list, the archive
+     * links and the asset URLs all read {@code v0.75.2}, so copying from where the versions
+     * actually are gets you the tag every time -- and flixw itself builds {@code "v" +
+     * version} to construct that URL, so it already holds that the two name one release.
+     * Refusing the form flixw prints into its own URLs made the user do a normalization the
+     * wrapper was doing anyway.
+     *
+     * Only ahead of a digit, so {@code vNext} is still a bad version rather than the
+     * version {@code Next}, and the diagnostic keeps naming the real problem.
+     *
+     * Deliberately not applied to {@code [package].flix}: that field is Flix's, and Flix
+     * accepts {@code x.x.x} alone.  Tolerating a tag there would let flixw read a manifest
+     * that Flix itself rejects, which is a worse outcome than the error it replaces.
+     */
+    static String stripTagPrefix(String v) {
+        return v.length() > 1 && v.charAt(0) == 'v' && Character.isDigit(v.charAt(1))
+             ? v.substring(1) : v;
     }
 
     /**
@@ -911,7 +939,9 @@ public final class flixw {
         if (version == null && existing == null)
             throw w002("pin: --java needs an existing lock, or a compiler version to write"
                      + " one\n       for example: ./flixw pin 0.75.2 --java " + MIN_JAVA);
-        if (version != null) validateVersion(version, "pin");
+        // Normalized before validation, so the lock records the version rather than the tag
+        // it was typed as, and two spellings of one release cannot produce two locks.
+        if (version != null) version = validateVersion(stripTagPrefix(version), "pin");
         if (repo == null) repo = existing != null && existing.repo() != null
                                ? existing.repo() : UPSTREAM_REPO;
         return new Pin(repo, version, java, clearJava != null, false);
@@ -3367,19 +3397,365 @@ public final class flixw {
                 if (!rest.isEmpty()) throw w008(wrapperUsage("'--schema' takes no arguments"));
                 System.out.print(lockSchemaJson());
             }
+            // Offline and project-free for the same reason as --schema, and for one more:
+            // the script it prints is byte-identical for every project on a given release,
+            // because everything project-specific is read at completion time from the note
+            // stage 0 leaves in .flixw/local/.  A script that had to be regenerated after
+            // every `pin` would be wrong in the one way a completion script must not be --
+            // silently, and only for the person who forgot.
+            case "--completion" -> {
+                if (rest.size() != 1)
+                    throw w008(wrapperUsage("'--completion' takes exactly one shell name"));
+                System.out.print(completionScript(rest.get(0)));
+            }
             default -> throw w008(wrapperUsage("unknown operation " + q(op)));
         }
     }
 
     static String wrapperUsage(String problem) {
         return "./flixw wrapper: " + problem
-             + "\n       usage: ./flixw wrapper [--help | --version | --upgrade | --install-jdk | --schema]"
+             + "\n       usage: ./flixw wrapper [--help | --version | --upgrade | --install-jdk"
+             + "\n                              | --schema | --completion]"
              + "\n         --help         the routing table for this project"
              + "\n         --version      the wrapper version and how stage 0 was launched"
              + "\n         --upgrade      move this project to the newest published flixw"
              + "\n                        (to repair the files it has: ./flixw doctor --fix)"
              + "\n         --install-jdk  fetch a verified Temurin " + MIN_JAVA + " into the cache"
-             + "\n         --schema       the JSON Schema for " + WRAPPER_DIR + "/lock.toml, on stdout";
+             + "\n         --schema       the JSON Schema for " + WRAPPER_DIR + "/lock.toml, on stdout"
+             + "\n         --completion <shell>   a TAB-completion script, on stdout,"
+             + "\n                        for one of " + String.join(", ", COMPLETION_SHELLS);
+    }
+
+    // ---- completion -------------------------------------------------------
+
+    static final List<String> COMPLETION_SHELLS = List.of("bash", "zsh", "fish", "pwsh");
+
+    static final String COMPL_BASH = """
+        # flixw TAB completion for bash -- GENERATED by `flixw wrapper --completion bash`.
+        #
+        #   ./flixw wrapper --completion bash > ~/.local/share/bash-completion/completions/flixw
+        #
+        # Candidates are read at TAB time from <project>/.flixw/local/verbs, the note stage 0
+        # leaves after it resolves a compiler, so they follow the pin and this file does not
+        # have to be regenerated after `pin`.  Nothing here starts a JVM: a stage 0 launch
+        # plus the digest re-hash flixw does on every run would cost more than typing the verb.
+
+        _flixw_root() {
+          # The project is wherever the wrapper being completed lives, not the working
+          # directory: `../other/flixw` is a different project's verb set, and completing it
+          # from this one would be confidently wrong.
+          local d
+          d=$(dirname -- "$1" 2>/dev/null) || d=.
+          [ -n "$d" ] || d=.
+          printf '%s' "$d"
+        }
+
+        _flixw() {
+          local cur root note words compl script fn saved0 saved_line
+          cur=${COMP_WORDS[COMP_CWORD]}
+          root=$(_flixw_root "${COMP_WORDS[0]}")
+          note=$root/.flixw/local/verbs
+
+          if [ "$COMP_CWORD" -eq 1 ]; then
+            # No note yet means this project has never resolved a compiler.  The baked-in
+            # list is this wrapper release's own view -- stale in the same harmless way the
+            # built-in verb table in stage 0 is, and better than completing nothing.
+            if [ -r "$note" ]; then words=$(cat -- "$note" 2>/dev/null)
+            else words="@VERBS@"; fi
+            # shellcheck disable=SC2207
+            COMPREPLY=( $(compgen -W "$words" -- "$cur") )
+            return 0
+          fi
+
+          # Past the verb, the compiler owns the arguments.  A picocli-based Flix ships a
+          # completer for them and stage 0 caches it; stock Flix is scopt and ships none, so
+          # the note is absent and `-o default` falls through to filename completion.
+          compl=$root/.flixw/local/completion
+          [ -r "$compl" ] || return 0
+          script=$(cat -- "$compl" 2>/dev/null)
+          [ -n "$script" ] && [ -r "$script" ] || return 0
+
+          # The registration line, which is the only part of a generated completer that is
+          # not the generator's private business: any bash completion script must end with
+          # one for the shell to use it at all.  Reading the function name from there rather
+          # than assuming picocli's `_complete_<name>` spelling means a rename upstream costs
+          # filename completion for one release instead of a broken completer.
+          fn=$(sed -n 's/^complete .*-F \\([A-Za-z_][A-Za-z0-9_]*\\).*/\\1/p' "$script" 2>/dev/null | head -1)
+          [ -n "$fn" ] || return 0
+          if ! declare -F "$fn" >/dev/null 2>&1; then
+            # Sourcing also runs the script's own `complete` call, which registers it for the
+            # compiler's name.  That is harmless -- it is a name this shell would otherwise
+            # have no completion for -- and it is why this happens once per shell, not per TAB.
+            # shellcheck disable=SC1090
+            . "$script" >/dev/null 2>&1 || return 0
+            declare -F "$fn" >/dev/null 2>&1 || return 0
+          fi
+
+          # The generated completer keys off argv[0] being the compiler's own name, which
+          # here is `./flixw`.  Swap it for the length of the call and put it back: COMP_WORDS
+          # belongs to the shell, not to us.
+          saved0=${COMP_WORDS[0]}; saved_line=$COMP_LINE
+          COMP_WORDS[0]=flix
+          COMP_LINE="flix ${COMP_LINE#* }"
+          "$fn"
+          COMP_WORDS[0]=$saved0; COMP_LINE=$saved_line
+          return 0
+        }
+
+        # Both spellings: nobody puts the wrapper on PATH, so `./flixw` is the form that
+        # matters, and bash matches the command word as typed rather than resolving it.
+        complete -F _flixw -o default flixw ./flixw
+        """;
+
+    static final String COMPL_ZSH = """
+        #compdef flixw ./flixw
+        # flixw TAB completion for zsh -- GENERATED by `flixw wrapper --completion zsh`.
+        #
+        #   ./flixw wrapper --completion zsh > "${fpath[1]}/_flixw"
+        #
+        # Candidates are read at TAB time from <project>/.flixw/local/verbs, the note stage 0
+        # leaves after it resolves a compiler, so they follow the pin and this file does not
+        # have to be regenerated after `pin`.  Nothing here starts a JVM.
+
+        _flixw() {
+          # The project is wherever the wrapper being completed lives, not the working
+          # directory; :h on a bare name yields `.`, which is the same answer.
+          local root=${words[1]:h}
+          [[ -n $root ]] || root=.
+          local note=$root/.flixw/local/verbs
+
+          if (( CURRENT == 2 )); then
+            local -a verbs
+            # No note yet means no compiler has been resolved here; the baked-in list is this
+            # release's own view, stale in the same harmless way stage 0's table is.
+            if [[ -r $note ]]; then verbs=( ${(f)"$(<$note)"} )
+            else verbs=( @VERBS@ ); fi
+            _describe -t flixw-verbs 'flixw verb' verbs
+            return
+          fi
+
+          # Past the verb the compiler owns the arguments.  picocli generates bash and zsh
+          # completers as one bash script, which is not loadable here without bashcompinit
+          # and a compatibility shim; rather than half-load it, fall through to files, which
+          # is what the arguments to `run`, `check` and `build` mostly are.
+          _files
+        }
+
+        _flixw "$@"
+        """;
+
+    static final String COMPL_FISH = """
+        # flixw TAB completion for fish -- GENERATED by `flixw wrapper --completion fish`.
+        #
+        #   ./flixw wrapper --completion fish > ~/.config/fish/completions/flixw.fish
+        #
+        # Candidates are read at TAB time from <project>/.flixw/local/verbs, the note stage 0
+        # leaves after it resolves a compiler, so they follow the pin and this file does not
+        # have to be regenerated after `pin`.  Nothing here starts a JVM.
+        #
+        # Verbs only.  picocli generates bash and zsh completers and no fish one, and fish
+        # cannot load a bash completion script, so past the verb fish's own file completion
+        # takes over -- which is what the arguments to `run`, `check` and `build` mostly are.
+
+        function __flixw_verbs --description 'the verbs the project being completed dispatches'
+            set -l tokens (commandline -opc)
+            test (count $tokens) -gt 0; or return
+            # The project is wherever the wrapper being completed lives, not the working
+            # directory: `../other/flixw` is a different project's verb set.  Done with
+            # builtins rather than dirname, so a keypress costs no process at all.
+            set -l root .
+            if string match -q '*/*' -- $tokens[1]
+                set root (string replace -r '/[^/]*$' '' -- $tokens[1])
+                test -n "$root"; or set root /
+            end
+            set -l note $root/.flixw/local/verbs
+            if test -r $note
+                cat -- $note
+            else
+                # No note yet means this project has never resolved a compiler.  The baked-in
+                # list is this wrapper release's own view -- stale in the same harmless way
+                # the built-in verb table in stage 0 is, and better than completing nothing.
+                printf '%s\\n' @VERBS@
+            end
+        end
+
+        # fish matches on the command's base name, so this one registration covers `flixw`,
+        # `./flixw` and an absolute path alike -- unlike bash, which matches the word as typed.
+        complete -c flixw -f -n __fish_is_first_arg -a '(__flixw_verbs)'
+        complete -c flixw -n 'not __fish_is_first_arg' -F
+        """;
+
+    static final String COMPL_PWSH = """
+        # flixw TAB completion for PowerShell -- GENERATED by
+        # `flixw wrapper --completion pwsh`.
+        #
+        #   ./flixw wrapper --completion pwsh >> $PROFILE
+        #
+        # Candidates are read at TAB time from <project>\\.flixw\\local\\verbs, the note stage 0
+        # leaves after it resolves a compiler, so they follow the pin and this file does not
+        # have to be regenerated after `pin`.  Nothing here starts a JVM.
+        #
+        # This registers against the existing flixw.cmd trampoline; PowerShell completes
+        # native commands including batch files, so nothing has to move to a .ps1 -- and the
+        # trampoline could not move anyway, since a .ps1 is not invokable as a bare command
+        # from cmd.exe or from a build tool, and the default execution policy blocks a
+        # downloaded one.  cmd.exe itself has no per-command completion mechanism at all, so
+        # it gets nothing here and that is an absence in cmd, not a gap in this script.
+        #
+        # Verbs only.  picocli generates bash and zsh completers and no PowerShell one, so
+        # past the verb there is nothing to delegate to and PowerShell's own file completion
+        # takes over.
+        Register-ArgumentCompleter -Native -CommandName flixw, flixw.cmd -ScriptBlock {
+            param($wordToComplete, $commandAst, $cursorPosition)
+
+            $elements = $commandAst.CommandElements
+            # The verb position only; past it the compiler owns the arguments.
+            if ($elements.Count -gt 2) { return }
+            if ($elements.Count -eq 2 -and [string]::IsNullOrEmpty($wordToComplete)) { return }
+
+            # The project is wherever the wrapper being completed lives, not the working
+            # directory: another project's wrapper has another project's verb set.
+            $root = Split-Path -Parent $elements[0].ToString()
+            if ([string]::IsNullOrEmpty($root)) { $root = '.' }
+            $note = Join-Path $root '.flixw/local/verbs'
+
+            # No note yet means no compiler has been resolved here; the baked-in list is this
+            # release's own view, stale in the same harmless way stage 0's table is.
+            $verbs = if (Test-Path -LiteralPath $note) { Get-Content -LiteralPath $note }
+                     else { @(@VERBS@) }
+
+            $verbs | Where-Object { $_ -and $_.StartsWith($wordToComplete) } | ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new(
+                    $_, $_, 'ParameterValue', $_)
+            }
+        }
+        """;
+
+    /**
+     * The name of the note stage 0 leaves for a completer, holding the verbs this project
+     * would actually dispatch.  It lives beside {@code local/java} and is machine-specific
+     * for the same reason: it describes a resolved compiler, not the project.
+     */
+    static final String VERBS_NOTE = "verbs";
+
+    /** The note naming the pinned compiler's own completion script, when it ships one. */
+    static final String COMPL_NOTE = "completion";
+
+    /**
+     * A completion script for one shell, on stdout.
+     *
+     * The script is static and the data is not.  Completion candidates depend on the pinned
+     * compiler -- compiler-first dispatch means a verb set that changes with the lock -- so
+     * a script that baked them in would go stale at the next {@code pin} and say nothing
+     * about it.  Instead the script reads them at TAB time from {@code .flixw/local/verbs},
+     * which stage 0 rewrites on every run that resolves a compiler.  That also keeps the
+     * JVM out of the completion path: a TAB press costs a file read, not a stage 0 launch
+     * plus the mandatory digest re-hash, which together are slower than typing the verb.
+     *
+     * The verb list compiled into each script is the fallback for a project that has not
+     * resolved a compiler yet -- the same bargain {@link #BUILTIN_VERBS} makes, and stale
+     * in the same harmless way.
+     *
+     * @param shell one of {@link #COMPLETION_SHELLS}
+     * @return the script text, ending in a newline
+     */
+    static String completionScript(String shell) {
+        List<String> fallback = new ArrayList<>(WRAPPER_VERBS);
+        for (String v : BUILTIN_VERBS) if (!fallback.contains(v)) fallback.add(v);
+        fallback.sort(null);
+        List<String> quoted = new ArrayList<>();
+        for (String v : fallback) quoted.add(q(v));
+        return switch (shell) {
+            case "bash" -> COMPL_BASH.replace("@VERBS@", String.join(" ", fallback));
+            case "zsh" -> COMPL_ZSH.replace("@VERBS@", String.join(" ", fallback));
+            case "fish" -> COMPL_FISH.replace("@VERBS@", String.join(" ", fallback));
+            case "pwsh" -> COMPL_PWSH.replace("@VERBS@", String.join(",", quoted));
+            default -> throw w008(wrapperUsage("unknown shell " + q(shell)));
+        };
+    }
+
+    /**
+     * Records the verbs this project dispatches, for a completer to read.
+     *
+     * The union, not the compiler's set alone: a wrapper verb the compiler has claimed is
+     * still a verb the user can type, and one it has not claimed is still handled here.
+     * Which side runs it is dispatch's business and no help to someone pressing TAB.
+     *
+     * Every failure is discarded, exactly as in {@link #recordJava}: a read-only checkout
+     * or a deleted directory is not worth a diagnostic for a note whose absence only costs
+     * a completer its per-project accuracy.
+     */
+    static void recordVerbs(Path root, List<String> compilerVerbs) {
+        List<String> all = new ArrayList<>(compilerVerbs);
+        for (String v : WRAPPER_VERBS) if (!all.contains(v)) all.add(v);
+        all.sort(null);
+        recordNote(root, VERBS_NOTE, String.join(System.lineSeparator(), all));
+    }
+
+    /** Same, for the path to the compiler's own completion script; absent means none. */
+    static void recordCompletion(Path root, Path script) {
+        recordNote(root, COMPL_NOTE, script.toAbsolutePath().normalize().toString());
+    }
+
+    static void recordNote(Path root, String name, String body) {
+        Path note = root.resolve(WRAPPER_DIR).resolve("local").resolve(name);
+        try {
+            String want = body + System.lineSeparator();
+            if (Files.isRegularFile(note)
+                && Files.readString(note, StandardCharsets.UTF_8).equals(want)) return;
+            Files.createDirectories(note.getParent());
+            writeAtomic(note, want);
+        } catch (IOException | RuntimeException ignored) { }
+    }
+
+    /**
+     * The pinned compiler's own completion script, cached, or null if it has none.
+     *
+     * Detection costs nothing and needs no version sniffing: picocli registers
+     * {@code generate-completion} as an ordinary subcommand, so it arrives in the verb set
+     * {@link #parseVerbs} already captured.  Stock Flix is scopt, never advertises it, and
+     * takes this path zero times -- which is the whole reason the check is a set membership
+     * rather than a probe.
+     *
+     * flixw does not read, rewrite or splice what comes back.  The generated script's
+     * internal shape is picocli's business and changes with picocli; the one line flixw
+     * looks at, at completion time and in shell, is the {@code complete -F} registration
+     * every bash completion script must end with.  Splicing was the alternative and it is
+     * worse than it looks: {@link #parseVerbs} guessing wrong falls back to a verb table,
+     * while a bad splice puts broken bash in someone's shell startup.
+     *
+     * Cached beside the verb record and keyed the same way, so a re-pin gets a new one and
+     * an override never writes next to a JAR flixw does not own.
+     */
+    static Path compilerCompletion(Path javaExe, Path jar, String identity, List<String> verbs) {
+        if (!verbs.contains("generate-completion")) return null;
+        Path cf = cacheHome().resolve("verbs").resolve(identity + ".compl");
+        if (Files.isRegularFile(cf)) return cf;
+        String out;
+        try {
+            out = runCapture(List.of(javaExe.toString(), "-jar", jar.toString(),
+                                     "generate-completion"), HELP_TIMEOUT, HELP_CAP);
+        } catch (IOException e) {
+            tr("cannot run `flix generate-completion`: " + e.getMessage());
+            return null;
+        }
+        // A completer that cannot register itself is not one.  Silence rather than a
+        // diagnostic: this is an optimisation on an optimisation, and the compiler owes
+        // flixw no such subcommand however it answered.
+        if (out == null || !out.contains("complete -F ")) {
+            tr("`flix generate-completion` produced no usable bash completer");
+            return null;
+        }
+        try {
+            Files.createDirectories(cf.getParent());
+            Path tmp = Files.createTempFile(cf.getParent(), ".compl-", ".part");
+            Files.writeString(tmp, out, StandardCharsets.UTF_8);
+            Files.move(tmp, cf, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            tr("cannot cache completer at " + cf + ": " + e.getMessage());
+            return null;
+        }
+        return cf;
     }
 
     // ---- main -------------------------------------------------------------
@@ -3517,8 +3893,15 @@ public final class flixw {
                              + " and this run is not stock-compatibility evidence");
         } else jar = acquire(lock);
 
-        List<String> compilerVerbs = verbs(jvm.exe(), jar, verbIdentity(jar, lock, override));
+        String verbId = verbIdentity(jar, lock, override);
+        List<String> compilerVerbs = verbs(jvm.exe(), jar, verbId);
         tr("verbs " + compilerVerbs.size());
+        // Notes for a completer, which cannot afford to start stage 0 itself.  Both are
+        // writes to already-resolved values, and both swallow every failure: a completion
+        // candidate is not worth a diagnostic, still less a failed build.
+        recordVerbs(root, compilerVerbs);
+        Path compl = compilerCompletion(jvm.exe(), jar, verbId, compilerVerbs);
+        if (compl != null) recordCompletion(root, compl);
         selfCompile(selfSource());
 
         // ---- dispatch ----------------------------------------------------
@@ -3601,7 +3984,8 @@ public final class flixw {
         System.out.println("  ./flixw info                     project, compiler, java, cache");
         System.out.println("  ./flixw doctor [--fix]           info, plus every check, with a verdict");
         System.out.println("  ./flixw validate                 the checks alone, for CI");
-        System.out.println("  ./flixw wrapper [--help | --version | --upgrade | --install-jdk | --schema]");
+        System.out.println("  ./flixw wrapper [--help | --version | --upgrade | --install-jdk"
+                         + " | --schema | --completion]");
         System.out.println();
         System.out.println("  FLIX_JAR=<path> ./flixw <verb>   run a locally built compiler"
                          + " (unverified; see ./.envrc.example)");
