@@ -145,9 +145,9 @@ build. Comparing rendered key strings would not have caught that; comparing
 the structured pair does, because the two remain distinct at that level
 even when they would render identically.
 
-**Hash collisions** — two genuinely different keys producing the same
-64-bit id — are *detected*, not prevented, and detection is scoped to the
-full generated symbol, not the bare id:
+**Full-symbol collisions** — two genuinely different semantic identities
+ending up with the same rendered name — are handled by detection, not by
+trying to make them structurally impossible:
 
 > `StableName` retains 64 bits of SHA-256. Hash equality alone is
 > harmless: generated names remain distinct when their enclosing
@@ -155,18 +155,6 @@ full generated symbol, not the bare id:
 > by its full symbol; if a different semantic identity claims that same
 > full symbol, compilation fails rather than silently overwriting
 > generated output.
-
-Every family that mints a generated symbol claims it under this rule
-before accepting it: `Eraser` (enum and struct specialization, keyed on
-the full `EnumSym`/`StructSym`), `Specialization` (def specialization and
-anonymous classes, keyed on the full `DefnSym`/`AnonClassSym`), `Namer`
-(instance-member ids, keyed on the full `DefnSym`), and `Deriver`
-(derived-def ids for `Eq`/`Order`/`ToString`/`Hash`/`Coerce`, keyed on the
-full `DefnSym`) each throw `InternalCompilerException` on a genuine
-collision rather than silently letting one identity overwrite another's
-cache entry. This closes the failure mode the previous version of this
-section described — collision used to be silent; now it is a loud,
-deterministic build failure.
 
 The scope matters as much as the mechanism: two different definitions may
 safely share a hash suffix when their namespace or base text differ,
