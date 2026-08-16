@@ -5,7 +5,7 @@ rem directly: every script under scripts/ is invoked by its extensionless
 rem name, never by calling scala-cli on the .scala file itself.
 rem
 rem Usage:
-rem   scripts\class-id-report.cmd [class-directory] [--output-dir directory] [--json]
+rem   scripts\class-id-report.cmd [class-directory-or-jar] [--output-dir directory] [--json]
 setlocal
 cd /d "%~dp0.."
 

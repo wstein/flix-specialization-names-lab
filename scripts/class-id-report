@@ -6,7 +6,7 @@
 # directly.
 #
 # Usage:
-#   ./scripts/class-id-report [class-directory] [--output-dir directory] [--json]
+#   ./scripts/class-id-report [class-directory-or-jar] [--output-dir directory] [--json]
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)

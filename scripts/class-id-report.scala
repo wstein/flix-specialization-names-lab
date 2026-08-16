@@ -2,39 +2,53 @@
 //> using scala "2.13.16"
 
 import java.io.{DataInputStream, BufferedInputStream}
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{FileSystems, Files, Path, Paths}
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import scala.collection.JavaConverters._
 import scala.util.Using
 
 /**
- * Extracts generated IDs and JVM symbols from an existing class directory.
+ * Extracts generated IDs and JVM symbols from an existing class directory or jar.
  *
- * Usage: ./scripts/class-id-report [class-directory] [--output-dir directory] [--json]
+ * Usage: ./scripts/class-id-report [class-directory-or-jar] [--output-dir directory] [--json]
  *
  * The script never invokes the Flix compiler. It supports both decimal GenSym
  * suffixes from older output and fixed-width base-36 SHA-256 suffixes from newer output.
  */
 object TraceFreshIds extends App {
   val config = Arguments.parse(args.toList)
-  val classDir = config.classDir
+  val input = config.input
   val outputDir = config.outputDir
-  if (!Files.isDirectory(classDir)) {
-    Console.err.println(s"Class directory not found: $classDir")
+
+  val isJar = Files.isRegularFile(input) && input.toString.endsWith(".jar")
+  if (!Files.isDirectory(input) && !isJar) {
+    val reason = if (Files.exists(input)) "not a directory or a .jar file" else "not found"
+    Console.err.println(s"$input: $reason")
     sys.exit(1)
   }
   Files.createDirectories(outputDir)
 
-  val classFiles = Using.resource(Files.walk(classDir)) { paths =>
-    paths.iterator.asScala.filter(path => Files.isRegularFile(path) && path.toString.endsWith(".class")).toList.sortBy(_.toString)
-  }
+  // A jar is opened as a zip filesystem rather than extracted: Files.walk and
+  // Files.newInputStream work the same on its entries as on a plain directory's, so
+  // ClassFile.read needs no jar-specific code at all. The filesystem has to stay open
+  // for as long as any of its Paths are read, so collection happens inside this block
+  // rather than after it.
+  val (classFiles, rows) =
+    if (isJar) Using.resource(FileSystems.newFileSystem(input)) { fs => collect(fs.getPath("/")) }
+    else collect(input)
 
-  val rows = classFiles.flatMap { path =>
-    ClassFile.read(path).toList.flatMap { info =>
-      val relative = classDir.relativize(path).toString
-      ClassFile.symbols(info, relative)
+  def collect(root: Path): (List[Path], List[SymbolRow]) = {
+    val files = Using.resource(Files.walk(root)) { paths =>
+      paths.iterator.asScala.filter(path => Files.isRegularFile(path) && path.toString.endsWith(".class")).toList.sortBy(_.toString)
     }
+    val symbolRows = files.flatMap { path =>
+      ClassFile.read(path).toList.flatMap { info =>
+        val relative = root.relativize(path).toString
+        ClassFile.symbols(info, relative)
+      }
+    }
+    (files, symbolRows)
   }
 
   val ids = rows.iterator.flatMap(row => Ids.in(row.symbol)).toSet
@@ -45,16 +59,16 @@ object TraceFreshIds extends App {
   Files.writeString(symbolsFile, Csv.header + System.lineSeparator + rows.map(_.csv).mkString(System.lineSeparator()) + (if (rows.nonEmpty) System.lineSeparator() else ""))
   Files.writeString(idsFile, ids.toList.sortBy(Ids.order).mkString("", System.lineSeparator(), if (ids.nonEmpty) System.lineSeparator() else ""))
 
-  val report = Report(classDir, classFiles.size, rows.size, ids.size, ids.count(Ids.isCounter), symbolsFile, idsFile)
+  val report = Report(input, classFiles.size, rows.size, ids.size, ids.count(Ids.isCounter), symbolsFile, idsFile)
   println(Reports.render(report, config.format))
 }
 
 object Arguments {
-  private val Usage = "Usage: ./scripts/class-id-report [class-directory] [--output-dir directory] [--json]"
+  private val Usage = "Usage: ./scripts/class-id-report [class-directory-or-jar] [--output-dir directory] [--json]"
 
   def parse(args: List[String]): Config = {
-    var classDir = Paths.get("build/class")
-    var classDirSet = false
+    var input = Paths.get("build/class")
+    var inputSet = false
     var outputDir = Paths.get(".")
     var format: ReportFormat = ReportFormat.Text
     var remaining = args
@@ -68,11 +82,11 @@ object Arguments {
       case "--json" :: tail => select(ReportFormat.Json); remaining = tail
       case ("--output-dir" | "-o") :: directory :: tail => outputDir = Paths.get(directory); remaining = tail
       case ("-h" | "--help") :: _ => println(Usage); sys.exit(0)
-      case directory :: tail if !directory.startsWith("-") && !classDirSet =>
-        classDir = Paths.get(directory); classDirSet = true; remaining = tail
+      case path :: tail if !path.startsWith("-") && !inputSet =>
+        input = Paths.get(path); inputSet = true; remaining = tail
       case _ => fail()
     }
-    Config(classDir, outputDir, format)
+    Config(input, outputDir, format)
   }
 
   private def fail(): Nothing = {
@@ -87,8 +101,8 @@ object ReportFormat {
   case object Json extends ReportFormat
 }
 
-case class Config(classDir: Path, outputDir: Path, format: ReportFormat)
-case class Report(classDir: Path, classFiles: Int, symbols: Int, uniqueIds: Int, counters: Int, symbolsFile: Path, idsFile: Path) {
+case class Config(input: Path, outputDir: Path, format: ReportFormat)
+case class Report(input: Path, classFiles: Int, symbols: Int, uniqueIds: Int, counters: Int, symbolsFile: Path, idsFile: Path) {
   def hashes: Int = uniqueIds - counters
 }
 
@@ -100,7 +114,7 @@ object Reports {
 
   private def text(report: Report): String = List(
     "Generated-class ID census",
-    s"  directory: ${report.classDir}",
+    s"  input: ${report.input}",
     s"  class files: ${report.classFiles}",
     s"  symbols: ${report.symbols}",
     s"  unique generated IDs: ${report.uniqueIds}",
@@ -111,7 +125,7 @@ object Reports {
   ).mkString(System.lineSeparator())
 
   private def json(report: Report): String =
-    s"""{"class_directory":"${escapeJson(report.classDir.toString)}","class_files":${report.classFiles},"symbols":${report.symbols},"unique_generated_ids":${report.uniqueIds},"id_kinds":{"sequential_counter":${report.counters},"sha256_hash_derived":${report.hashes}},"outputs":{"symbols_csv":"${escapeJson(report.symbolsFile.toString)}","ids_txt":"${escapeJson(report.idsFile.toString)}"}}"""
+    s"""{"input":"${escapeJson(report.input.toString)}","class_files":${report.classFiles},"symbols":${report.symbols},"unique_generated_ids":${report.uniqueIds},"id_kinds":{"sequential_counter":${report.counters},"sha256_hash_derived":${report.hashes}},"outputs":{"symbols_csv":"${escapeJson(report.symbolsFile.toString)}","ids_txt":"${escapeJson(report.idsFile.toString)}"}}"""
 
   private def escapeJson(value: String): String = value.flatMap {
     case '"' => "\\\""
