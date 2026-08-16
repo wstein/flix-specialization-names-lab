@@ -6,6 +6,7 @@ crash_report_*.txt
 artifact/
 lib/
 site/
+out/
 
 # scala-cli, for scripts/*.scala
 .scala-build/
@@ -20,8 +21,7 @@ ids-*.txt
 .envrc.local
 .GITHUB_TOKEN
 
-# Editor / OS / local Claude Code settings
-out/
+# OS
 .DS_Store
 
 # Local Claude Code settings
