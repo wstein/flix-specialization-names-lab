@@ -1,25 +1,14 @@
 #!/usr/bin/env python3
-"""
-generated-class-ids.py: Extract JVM symbols and generated IDs from class files.
-
-Workflow:
-  1. Locates the latest generated fresh-ids-<timestamp>.csv trace file
-  2. Extracts symbols and fresh IDs ($digits) from JVM .class files in build/class/
-  3. Saves symbols-<timestamp>.csv and ids-<timestamp>.txt
-  4. Marks matching rows in fresh-ids-<timestamp>.csv (marked: true/false)
-  5. Displays a concise summary
-"""
+"""Extract old counter and new stable IDs from generated JVM class files."""
 
 import argparse
 import csv
 import os
 import re
-import shutil
 import struct
 import sys
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Ids embedded in a generated JVM name, in either of the two forms a symbol can carry.
 #
@@ -31,11 +20,10 @@ from typing import Any, Dict, Generator, List, Optional, Set, Tuple
 # replaced them; matching only hashes would hide any counter that survives.
 #
 # The stable form is tried first: it is exactly 13 characters, so an all-digit hash would
-# otherwise be misread as a counter. Counters are far shorter in practice — the largest
-# seen on a standard-library compile is six digits.
+# otherwise be misread as a counter. Counter IDs may have any number of decimal digits.
 STABLE_WIDTH = 13
 STABLE_ID_PATTERN = re.compile(r"\$([0-9a-z]{%d})(?![0-9a-z])" % STABLE_WIDTH)
-COUNTER_ID_PATTERN = re.compile(r"\$(\d{3,})(?![0-9a-z])")
+COUNTER_ID_PATTERN = re.compile(r"\$(\d+)(?![0-9a-z])")
 
 
 def find_ids(text: str) -> List[str]:
@@ -440,52 +428,40 @@ def find_latest_trace(project_dir: Path) -> Optional[Path]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Extract symbols and IDs from compiled classes and mark matching rows in the fresh-ids trace.",
+        description="Extract old counter and new stable IDs from generated class files.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "-p", "--project-dir",
-        default=".",
-        help="Project directory containing flix.toml and build/ (default: current directory)",
+        "class_dir",
+        nargs="?",
+        default="build/class",
+        help="Generated class directory to scan",
     )
     parser.add_argument(
-        "--match-on",
-        default="id,oid",
-        help="Comma-separated fields to match on: id, oid, owner, name (default: id,oid)",
+        "-o", "--output-dir",
+        default=".",
+        help="Directory for generated-class-symbols.csv and generated-class-ids.txt",
     )
     args = parser.parse_args()
 
-    project_dir = Path(args.project_dir).resolve()
-    build_dir = project_dir / "build"
-    class_dir = build_dir / "class"
-    match_fields = set(f.strip().lower() for f in args.match_on.split(","))
-
-    # 1. Locate fresh-ids trace file
-    trace_file = find_latest_trace(project_dir)
-    ts_suffix = ""
-    if trace_file:
-        m = re.search(r"fresh-ids-(.+)\.csv$", trace_file.name)
-        if m:
-            ts_suffix = f"-{m.group(1)}"
-
-    # 2. Extract symbols & IDs from build/class
+    class_dir = Path(args.class_dir).resolve()
+    output_dir = Path(args.output_dir).resolve()
     if not class_dir.exists():
         sys.stderr.write(f"Error: Class directory not found: {class_dir}\n")
         sys.exit(1)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f">> Extracting symbols from {class_dir}...")
     symbol_rows, target_ids, classes_count = extract_symbols_and_ids(class_dir)
 
-    # Save symbols-<ts>.csv
-    symbols_csv = project_dir / f"symbols{ts_suffix}.csv"
+    symbols_csv = output_dir / "generated-class-symbols.csv"
     with open(symbols_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["kind", "class", "symbol", "id", "descriptor", "signature", "file"])
         writer.writeheader()
         for r in symbol_rows:
             writer.writerow(r)
 
-    # Save ids-<ts>.txt
-    ids_txt = project_dir / f"ids{ts_suffix}.txt"
+    ids_txt = output_dir / "generated-class-ids.txt"
     with open(ids_txt, "w", encoding="utf-8") as f:
         # Counters first, in numeric order, then content hashes lexicographically. The key
         # has to be uniform: the two forms are not comparable to each other.
@@ -495,16 +471,6 @@ def main():
         for tid in sorted(target_ids, key=order):
             f.write(f"{tid}\n")
 
-    # 3. Mark fresh-ids trace file
-    if not trace_file:
-        sys.stderr.write("Warning: No fresh-ids-*.csv file found to mark.\n")
-        sys.exit(0)
-
-    print(f">> Marking rows in {trace_file.name}...")
-    stats = mark_fresh_ids_trace(trace_file, target_ids, match_fields)
-
-    # 4. Summary
-    pct = (stats["marked_rows"] / stats["total_rows"] * 100.0) if stats["total_rows"] else 0.0
     print("\n" + "=" * 60)
     print(" SUMMARY")
     print("=" * 60)
@@ -514,16 +480,11 @@ def main():
     # replace them; reporting only the total would hide either half going wrong.
     counters = {i for i in target_ids if is_counter(i)}
     stable = target_ids - counters
-    print(f" - Target fresh IDs found:   {len(target_ids):,}")
-    print(f"   * Counter-derived:        {len(counters):,}  (must reach 0)")
+    print(f" - Generated IDs found:      {len(target_ids):,}")
+    print(f"   * Counter-derived:        {len(counters):,}")
     print(f"   * Content-addressed:      {len(stable):,}")
-    print(f" - Saved symbols CSV:        {symbols_csv.name}")
-    print(f" - Saved IDs list:           {ids_txt.name}")
-    print(f" - Trace file marked:        {trace_file.name}")
-    print(f" - Total trace rows:         {stats['total_rows']:,}")
-    print(f" - Marked matching rows:     {stats['marked_rows']:,} ({pct:.2f}%)")
-    print(f"   * Matched on id:          {stats['id_matches']:,}")
-    print(f"   * Matched on oid:         {stats['oid_matches']:,}")
+    print(f" - Saved symbols CSV:        {symbols_csv}")
+    print(f" - Saved IDs list:           {ids_txt}")
     print("=" * 60 + "\n")
 
 
