@@ -27,7 +27,7 @@ the same source.
 The workflow, carried over from the exploration on the
 `flix-specialization-names-lab` branch of the compiler fork, is:
 
-1. **`src/hello.flix`** — a demo deliberately written to touch every
+1. **`src/Main.flix`** — a demo deliberately written to touch every
    id-bearing symbol kind the compiler can mint: specialized defs, lifted
    lambdas, a polymorphic struct instantiated at many types, an anonymous
    Java class, and a def called at a dozen distinct type arguments. The goal
@@ -72,10 +72,14 @@ it outside the repository, and runs it. Later commands reuse the cache.
 ```
 .
 ├── src/
-│   └── Main.flix                 template placeholder — to be replaced by the
-│                                  hello.flix demo from the lab branch
+│   └── Main.flix                 the id-bearing-symbol demo; see "What the lab measures"
 ├── test/
-│   └── TestMain.flix             template placeholder @Test functions
+│   └── TestMain.flix             @Test functions covering Main.flix
+├── scripts/
+│   ├── class-id-report(.scala|.cmd)   censuses generated symbol names in build/class
+│   └── edit-resistance(.scala|.cmd)   measures name/byte survival across perturbations
+├── docs/
+│   └── adr/                      architecture decision records, e.g. the naming scheme
 ├── .flixw/
 │   ├── flixw.java                the wrapper proper — one dependency-free Java file
 │   └── lock.toml                 the exact compiler, its URL, and its SHA-256
@@ -90,7 +94,7 @@ it outside the repository, and runs it. Later commands reuse the cache.
 ├── flixw.cmd                     the cmd.exe trampoline
 ├── AGENTS.md                     instructions for coding agents; CLAUDE.md and
 │                                 .github/copilot-instructions.md point at it
-└── LICENSE                       Apache-2.0, with the copyright line to replace
+└── LICENSE                       Apache-2.0
 ```
 
 `flix.toml` states a *floor* and `.flixw/lock.toml` states the *pin*. They are
@@ -158,11 +162,12 @@ warns rather than failing, so a fresh copy of this template does not start red.
 
 ## Status
 
-This repository was scaffolded from `flix-template` and still carries its
-placeholder `src/Main.flix` and `test/TestMain.flix`. Porting over the actual
-lab content — `src/hello.flix`, `class-id-report.scala`, and the `flix.toml`
-metadata from the `flix-specialization-names-lab` branch of the compiler
-fork — is a follow-up step, not yet done here.
+This repository was scaffolded from `flix-template`. The lab content from the
+`flix-specialization-names-lab` branch of the compiler fork has been ported in:
+the demo lives at `src/Main.flix` (not the `hello.flix` name used on that
+branch), alongside `test/TestMain.flix` and real `flix.toml` metadata, and
+`scripts/class-id-report` and `scripts/edit-resistance` are in place under
+`scripts/`.
 
 The Flix and `flixw` badges read `.flixw/lock.toml` directly, so re-pinning with
 `./flixw pin <version>` updates them without touching this file.
