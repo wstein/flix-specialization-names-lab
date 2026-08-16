@@ -25,21 +25,16 @@ rem Usage:
 rem   scripts\edit-resistance.cmd [source.flix]
 rem   scripts\edit-resistance.cmd --flix-jar path\to\flix.jar [source.flix]
 setlocal enabledelayedexpansion
-cd /d "%~dp0.."
 
-rem This tool compiles in-process and never reads or writes build\ itself, but
-rem a stale build\ from an earlier flixw.cmd build or flixw.cmd test can
-rem linger alongside it. Wiping it here keeps a run's disk footprint to just
-rem what this invocation produces, and keeps a parallel class-id-report
-rem census (which does read build\class) from ever picking up classes from a
-rem source version that has since moved on.
-if exist build rmdir /s /q build
-
+rem Parsed first, ahead of everything else below, so -h/--help short-circuits
+rem before this changes directory, wipes build\, or resolves a jar.
 set "JAR=%FLIX_JAR%"
 set "ARGS="
 
 :parse
 if "%~1"=="" goto afterparse
+if "%~1"=="-h" goto usage
+if "%~1"=="--help" goto usage
 if "%~1"=="--flix-jar" (
   set "JAR=%~2"
   shift
@@ -50,7 +45,37 @@ set "ARGS=!ARGS! %1"
 shift
 goto parse
 
+:usage
+echo Usage: scripts\edit-resistance.cmd [--flix-jar path\to\flix.jar] [source.flix]
+echo(
+echo Measures how many generated class names, and how many generated classes,
+echo survive a set of edits to source.flix (default: src\Main.flix^).
+echo(
+echo Options:
+echo   --flix-jar ^<path^>  Flix compiler jar to compile against. Overrides
+echo                       every other source below.
+echo   -h, --help          Show this help and exit.
+echo(
+echo Jar resolution when --flix-jar is not given, first match wins:
+echo   1. %%FLIX_JAR%%        unverified, as in .envrc.example
+echo   2. flixw.cmd info    the jar flixw.cmd downloaded and digest-verified
+echo                        for .flixw\lock.toml, if flixw.cmd is present
+echo                        and succeeds
+echo   3. .\flix.jar        a jar placed at the project root by hand
+echo   4. `flix` on %%PATH%%  a system-installed Flix, if it resolves to a jar
+exit /b 0
+
 :afterparse
+cd /d "%~dp0.."
+
+rem This tool compiles in-process and never reads or writes build\ itself, but
+rem a stale build\ from an earlier flixw.cmd build or flixw.cmd test can
+rem linger alongside it. Wiping it here keeps a run's disk footprint to just
+rem what this invocation produces, and keeps a parallel class-id-report
+rem census (which does read build\class) from ever picking up classes from a
+rem source version that has since moved on.
+if exist build rmdir /s /q build
+
 if "%JAR%"=="" (
   where flixw.cmd >nul 2>nul && (
     for /f "tokens=1,*" %%A in ('flixw.cmd info 2^>nul') do (

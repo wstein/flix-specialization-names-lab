@@ -28,21 +28,37 @@
 #   ./scripts/edit-resistance --flix-jar path/to/flix.jar [source.flix]
 set -euo pipefail
 
-root=$(cd "$(dirname "$0")/.." && pwd)
-cd "$root"
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/edit-resistance [--flix-jar path/to/flix.jar] [source.flix]
 
-# This tool compiles in-process and never reads or writes build/ itself, but
-# a stale build/ from an earlier ./flixw build or ./flixw test can linger
-# alongside it. Wiping it here keeps a run's disk footprint to just what this
-# invocation produces, and keeps a parallel class-id-report census (which
-# does read build/class) from ever picking up classes from a source version
-# that has since moved on.
-rm -rf build
+Measures how many generated class names, and how many generated classes,
+survive a set of edits to source.flix (default: src/Main.flix).
 
+Options:
+  --flix-jar <path>  Flix compiler jar to compile against. Overrides every
+                      other source below.
+  -h, --help          Show this help and exit.
+
+Jar resolution when --flix-jar is not given, first match wins:
+  1. $FLIX_JAR        unverified, as in .envrc.example
+  2. ./flixw info      the jar flixw downloaded and digest-verified for
+                       .flixw/lock.toml, if ./flixw is present and succeeds
+  3. ./flix.jar        a jar placed at the project root by hand
+  4. `flix` on $PATH   a system-installed Flix, if it resolves to a jar
+EOF
+}
+
+# Parsed here, ahead of everything else below, so --help/-h short-circuits
+# before this wipes build/ or resolves a jar.
 jar=${FLIX_JAR:-}
 args=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
     --flix-jar)
       jar=$2
       shift 2
@@ -57,6 +73,25 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root"
+
+# This tool compiles in-process and never reads or writes build/ itself, but
+# a stale build/ from an earlier ./flixw build or ./flixw test can linger
+# alongside it. Wiping it here keeps a run's disk footprint to just what this
+# invocation produces, and keeps a parallel class-id-report census (which
+# does read build/class) from ever picking up classes from a source version
+# that has since moved on.
+rm -rf build
+
+if [ -z "$jar" ] && [ -x ./flixw ]; then
+  jar=$(./flixw info 2>/dev/null | awk '$1 == "jar" { print $2; exit }') || true
+fi
+
+if [ -z "$jar" ] && [ -f flix.jar ]; then
+  jar=flix.jar
+fi
 
 if [ -z "$jar" ]; then
   jar=$(command -v flix) || true
