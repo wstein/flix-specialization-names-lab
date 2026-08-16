@@ -31,6 +31,14 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 
+# This tool compiles in-process and never reads or writes build/ itself, but
+# a stale build/ from an earlier ./flixw build or ./flixw test can linger
+# alongside it. Wiping it here keeps a run's disk footprint to just what this
+# invocation produces, and keeps a parallel class-id-report census (which
+# does read build/class) from ever picking up classes from a source version
+# that has since moved on.
+rm -rf build
+
 jar=${FLIX_JAR:-}
 args=()
 while [ $# -gt 0 ]; do

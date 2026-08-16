@@ -27,6 +27,14 @@ rem   scripts\edit-resistance.cmd --flix-jar path\to\flix.jar [source.flix]
 setlocal enabledelayedexpansion
 cd /d "%~dp0.."
 
+rem This tool compiles in-process and never reads or writes build\ itself, but
+rem a stale build\ from an earlier flixw.cmd build or flixw.cmd test can
+rem linger alongside it. Wiping it here keeps a run's disk footprint to just
+rem what this invocation produces, and keeps a parallel class-id-report
+rem census (which does read build\class) from ever picking up classes from a
+rem source version that has since moved on.
+if exist build rmdir /s /q build
+
 set "JAR=%FLIX_JAR%"
 set "ARGS="
 
