@@ -141,6 +141,13 @@ object Reports {
 }
 
 object Ids {
+  // A 13-digit decimal counter would be indistinguishable from a base-36 stable id and
+  // so get classified as one; accepted rather than fixed, since nothing mints one. The
+  // stable-name families that ever reach a class/method/field name no longer use a
+  // counter at all, and the counter-based ids this script also has to read from older
+  // compiler output peak at roughly the number of ids minted per compile -- about
+  // 230,000 (six digits) for a full stdlib build -- many orders of magnitude short of
+  // the ~10^12 a 13-digit value would require.
   private val Stable = "\\$([0-9a-z]{13})(?![0-9a-z])".r
   private val Counter = "\\$(\\d+)(?![0-9a-z])".r
 
