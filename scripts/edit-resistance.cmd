@@ -70,11 +70,12 @@ echo(
 echo Options:
 echo   --flix-jar ^<path^>        Flix compiler jar to compile against.
 echo                             Overrides every other source below.
-echo   --compiler-version ^<str^> Label the report with what produced it.
-echo                             Neither a jar's manifest nor its class files
-echo                             record this (verified by hand), so it can't
-echo                             be read back -- if not given, it's filled in
-echo                             based on how the jar below was resolved.
+echo   --compiler-version ^<str^> Label the report with what produced it. If
+echo                             not given, this asks the resolved jar
+echo                             directly (java -jar ... --version^) and
+echo                             appends a short digest of its own bytes,
+echo                             since two builds can share a version
+echo                             string while differing in every byte.
 echo   -h, --help                Show this help and exit.
 echo(
 echo Jar resolution when --flix-jar is not given, first match wins. This never
@@ -119,10 +120,35 @@ rem default -- which would otherwise resolve against the caller's cwd now
 rem that this never `cd`s.
 if "%ARGS%"=="" set ARGS= "%~dp0..\src\Main.flix"
 
-rem Labeling the report: an explicit --compiler-version always wins. Otherwise this falls
-rem back to the resolved jar path itself (unlike the POSIX wrapper, this does not also try
-rem to parse a version out of flixw's cache filename convention), so the report always
-rem shows which jar actually produced it.
-if "%COMPILER_VERSION%"=="" set "COMPILER_VERSION=%JAR%"
+rem Labeling the report: an explicit --compiler-version always wins. Otherwise this asks the
+rem jar itself (java -jar ... --version) rather than parsing its cache filename -- that
+rem works no matter what the file is named or where it came from.
+rem
+rem The version alone is not enough to label with: two builds can print the identical
+rem version string while differing in every byte -- comparing exactly that is what this lab
+rem is for -- so a self-computed digest (a short prefix, git-style) is always appended,
+rem computed from the jar's own bytes via certutil (built into Windows, no extra install).
+if "%COMPILER_VERSION%"=="" (
+  set "VERSION="
+  for /f "tokens=*" %%L in ('java -jar "%JAR%" --version 2^>nul') do set "VERSION_LINE=%%L"
+  if defined VERSION_LINE (
+    for %%T in (!VERSION_LINE!) do set "VERSION=%%T"
+  )
+
+  set "DIGEST="
+  for /f "skip=1 delims=" %%H in ('certutil -hashfile "%JAR%" SHA256 2^>nul') do (
+    if not defined DIGEST (
+      set "HLINE=%%H"
+      echo !HLINE! | findstr /c:"CertUtil" >nul || set "DIGEST=!HLINE: =!"
+    )
+  )
+
+  rem Independent, non-chained conditions rather than if/else: an else here would bind to
+  rem the nearest enclosing if, not the outer one, and silently leave COMPILER_VERSION
+  rem empty in the not-defined-VERSION case instead of falling back to %JAR%.
+  if defined VERSION if defined DIGEST set "COMPILER_VERSION=!VERSION! ^(!DIGEST:~0,12!^)"
+  if defined VERSION if not defined DIGEST set "COMPILER_VERSION=!VERSION!"
+  if not defined VERSION set "COMPILER_VERSION=%JAR%"
+)
 
 scala-cli run "%~dp0edit-resistance.scala" --jvm 21 --jar "%JAR%" -- --compiler-version "%COMPILER_VERSION%" %ARGS%

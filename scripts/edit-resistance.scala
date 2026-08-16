@@ -60,10 +60,11 @@ import java.security.MessageDigest
   * The compiler runs in this process rather than as a subprocess, so no assembled jar and
   * no scratch project are needed, and the whole sweep costs one compile per perturbation.
   *
-  * `--compiler-version <string>` labels the report with what produced it. Nothing here can
-  * read that back from the jar itself (verified by hand: neither a jar's manifest nor its
-  * class files record it), so the wrapper script fills it in from the resolved jar's
-  * filename or path when not given explicitly.
+  * `--compiler-version <string>` labels the report with what produced it. Static inspection
+  * cannot recover that (verified by hand: neither a jar's manifest nor its class files
+  * record it), so the wrapper script asks the jar to report itself instead
+  * (`java -jar ... --version`) and appends a digest of its own bytes, when not given
+  * explicitly.
   */
 object EditResistance {
 
@@ -182,8 +183,8 @@ object EditResistance {
     * Splits `args` into an optional --compiler-version value and the remaining positional
     * arguments. Compiled classes never record which compiler produced them (neither a
     * jar's manifest nor its class files do -- verified by hand), so this is caller-supplied
-    * labeling only; the wrapper script fills it in from the resolved jar's own filename or
-    * path when not given explicitly.
+    * labeling only; the wrapper script asks the resolved jar to report its own version, and
+    * appends a digest of its bytes, when not given explicitly.
     */
   private def parseArgs(args: List[String]): (Option[String], List[String]) = {
     var compilerVersion: Option[String] = None

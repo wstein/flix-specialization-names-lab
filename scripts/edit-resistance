@@ -37,11 +37,12 @@ survive a set of edits to source.flix (default: src/Main.flix).
 Options:
   --flix-jar <path>        Flix compiler jar to compile against. Overrides
                             every other source below.
-  --compiler-version <str> Label the report with what produced it. Neither a
-                            jar's manifest nor its class files record this
-                            (verified by hand), so it can't be read back --
-                            if not given, it's filled in based on how the
-                            jar below was resolved.
+  --compiler-version <str> Label the report with what produced it. If not
+                            given, this asks the resolved jar directly
+                            (`java -jar ... --version`) and appends a short
+                            digest of its own bytes, since two builds can
+                            share a version string while differing in
+                            every byte.
   -h, --help                Show this help and exit.
 
 Jar resolution when --flix-jar is not given, first match wins. This never
@@ -127,15 +128,22 @@ if [ ${#args[@]} -eq 0 ]; then
   args+=("$root/src/Main.flix")
 fi
 
-# Labeling the report: an explicit --compiler-version always wins. Otherwise, this falls
-# back to whatever the jar's own filename says (matching flixw's own cache-naming
-# convention, e.g. flix-0.75.3-<sha256>.jar, in case FLIX_JAR happens to point at a copy of
-# one) and finally to the resolved path itself, so the report always shows which jar
-# actually produced it.
+# Labeling the report: an explicit --compiler-version always wins. Otherwise this asks the
+# jar itself (`java -jar ... --version`) rather than parsing its cache filename -- that
+# works no matter what the file is named or where it came from.
+#
+# The version alone is not enough to label with: two builds can print the identical version
+# string while differing in every byte -- comparing exactly that is what this lab is for --
+# so a self-computed digest (a short prefix, git-style) is always appended. It is computed
+# from the jar's own bytes, not read out of a filename, so it holds even for a jar renamed
+# away from flixw's flix-<version>-<sha256>.jar convention.
 if [ -z "$compiler_version" ]; then
-  base=$(basename "$jar")
-  if [[ "$base" =~ ^flix-(.+)-[0-9a-f]{64}\.jar$ ]]; then
-    compiler_version="${BASH_REMATCH[1]}"
+  version=$(java -jar "$jar" --version 2>/dev/null | awk '{print $NF}') || true
+  digest=$( (shasum -a 256 "$jar" 2>/dev/null || sha256sum "$jar" 2>/dev/null) | awk '{print $1}') || true
+  if [ -n "$version" ] && [ -n "$digest" ]; then
+    compiler_version="$version (${digest:0:12})"
+  elif [ -n "$version" ]; then
+    compiler_version=$version
   else
     compiler_version=$jar
   fi
