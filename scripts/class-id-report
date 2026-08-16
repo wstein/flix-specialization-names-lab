@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Runs class-id-report.scala. This wrapper never needs the Flix compiler
+# jar -- the script only reads an already-built build/class directory -- but
+# it exists anyway so every script under scripts/ is invoked the same way:
+# by its extensionless name, never by calling scala-cli on the .scala file
+# directly.
+#
+# Usage:
+#   ./scripts/class-id-report [class-directory] [--output-dir directory] [--json]
+set -euo pipefail
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root"
+
+exec scala-cli run scripts/class-id-report.scala -- "$@"

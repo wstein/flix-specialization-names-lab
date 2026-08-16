@@ -45,15 +45,16 @@ import java.security.MessageDigest
   * Run with:
   *
   * {{{
-  *   ./edit-resistance [source.flix]
+  *   ./scripts/edit-resistance [source.flix]
+  *   ./scripts/edit-resistance --flix-jar path/to/flix.jar [source.flix]
   * }}}
   *
-  * `edit-resistance` resolves the Flix compiler jar `flixw` already downloaded and
-  * digest-verified for the version pinned in `.flixw/lock.toml`, then hands it to
-  * `scala-cli` as `--jar` -- a `using jar` directive cannot be computed at build time, so
-  * this script alone has no classpath. Running `scala-cli run EditResistance.scala`
-  * directly fails to compile with "object api is not a member of package
-  * ca.uwaterloo.flix" for that reason.
+  * `scripts/edit-resistance` resolves the Flix compiler jar `flixw` already downloaded and
+  * digest-verified for the version pinned in `.flixw/lock.toml` (or the one passed via
+  * `--flix-jar`), then hands it to `scala-cli` as `--jar` -- a `using jar` directive cannot
+  * be computed at build time, so this script alone has no classpath. Running
+  * `scala-cli run scripts/edit-resistance.scala` directly fails to compile with "object api
+  * is not a member of package ca.uwaterloo.flix" for that reason.
   *
   * The compiler runs in this process rather than as a subprocess, so no assembled jar and
   * no scratch project are needed, and the whole sweep costs one compile per perturbation.

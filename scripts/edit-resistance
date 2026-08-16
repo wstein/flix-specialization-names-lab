@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Runs edit-resistance.scala against a Flix compiler jar. `scala-cli`'s `using
+# jar` directive is a static literal -- it cannot shell out or read an env
+# var -- so edit-resistance.scala alone has no classpath and running it with
+# `scala-cli run` directly fails to compile. This resolves the jar and hands
+# it to scala-cli as `--jar`.
+#
+# flixw is preferred when available -- its jar is the one pinned in
+# .flixw/lock.toml and digest-verified before use -- but nothing here
+# requires it. Jar resolution, in order, first match wins:
+#   1. --flix-jar <path>  passed on this script's own command line
+#   2. $FLIX_JAR          same override convention flixw itself uses for
+#                         running a compiler it did not download (see
+#                         .envrc.example); unverified, same as there
+#   3. ./flixw info       the jar flixw already downloaded and
+#                         digest-verified for .flixw/lock.toml, if ./flixw
+#                         is present and succeeds
+#   4. ./flix.jar         a jar placed at the project root by hand
+#   5. `flix` on $PATH    whatever a system-installed Flix resolves to.
+#                         Only works if that is itself a jar (or a
+#                         polyglot self-executing one, e.g. a shebang
+#                         prepended to a real jar) -- scala-cli's --jar
+#                         needs an actual jar, not a launcher script, and
+#                         this is unverified either way
+#
+# Usage:
+#   ./scripts/edit-resistance [source.flix]
+#   ./scripts/edit-resistance --flix-jar path/to/flix.jar [source.flix]
+set -euo pipefail
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root"
+
+jar=${FLIX_JAR:-}
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --flix-jar)
+      jar=$2
+      shift 2
+      ;;
+    --flix-jar=*)
+      jar=${1#--flix-jar=}
+      shift
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$jar" ]; then
+  jar=$(command -v flix) || true
+fi
+
+if [ -z "$jar" ] || [ ! -f "$jar" ]; then
+  echo "error: no Flix compiler jar found (tried \$FLIX_JAR, ./flixw info, ./flix.jar, and 'flix' on \$PATH)" >&2
+  echo "run ./flixw check once to download and verify it, place a jar at ./flix.jar, or pass --flix-jar" >&2
+  exit 1
+fi
+
+exec scala-cli run scripts/edit-resistance.scala --jvm 21 --jar "$jar" -- "${args[@]}"

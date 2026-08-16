@@ -33,13 +33,17 @@ The workflow, carried over from the exploration on the
    Java class, and a def called at a dozen distinct type arguments. The goal
    is a source file where nearly every generated class name is exercised at
    least once.
-2. **`class-id-report.scala`** — a `scala-cli` script that reads an already
+2. **`scripts/class-id-report`** — a `scala-cli` script that reads an already
    built `build/class` directory (it never invokes the compiler itself),
    extracts every generated symbol name from the `.class` files' constant
    pools, and censuses which ids are sequential counters versus SHA-256
    hash-derived. It writes a CSV of every symbol plus a flat list of unique
    ids, and reports counts of each id kind.
-3. Comparing that census across recompiles — with and without unrelated
+3. **`scripts/edit-resistance`** — runs the compiler in-process against a
+   source file, once unmodified and once per perturbation (a comment, a
+   renamed variable, an added specialization, …), and reports what fraction
+   of generated class names and bytes survive each edit.
+4. Comparing that census across recompiles — with and without unrelated
    source edits — is what shows whether a naming scheme is actually stable:
    a hash-derived id should reappear unchanged; a counter-derived one
    renumbers as soon as an earlier declaration shifts.

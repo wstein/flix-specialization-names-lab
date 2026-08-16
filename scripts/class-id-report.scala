@@ -11,7 +11,7 @@ import scala.util.Using
 /**
  * Extracts generated IDs and JVM symbols from an existing class directory.
  *
- * Usage: ./generated-class-id-report.scala [class-directory] [--output-dir directory] [--json]
+ * Usage: ./scripts/class-id-report [class-directory] [--output-dir directory] [--json]
  *
  * The script never invokes the Flix compiler. It supports both decimal GenSym
  * suffixes from older output and fixed-width base-36 SHA-256 suffixes from newer output.
@@ -50,7 +50,7 @@ object TraceFreshIds extends App {
 }
 
 object Arguments {
-  private val Usage = "Usage: generated-class-id-report.scala [class-directory] [--output-dir directory] [--json]"
+  private val Usage = "Usage: ./scripts/class-id-report [class-directory] [--output-dir directory] [--json]"
 
   def parse(args: List[String]): Config = {
     var classDir = Paths.get("build/class")
@@ -67,7 +67,7 @@ object Arguments {
     while (remaining.nonEmpty) remaining match {
       case "--json" :: tail => select(ReportFormat.Json); remaining = tail
       case ("--output-dir" | "-o") :: directory :: tail => outputDir = Paths.get(directory); remaining = tail
-      case "--help" :: _ => println(Usage); sys.exit(0)
+      case ("-h" | "--help") :: _ => println(Usage); sys.exit(0)
       case directory :: tail if !directory.startsWith("-") && !classDirSet =>
         classDir = Paths.get(directory); classDirSet = true; remaining = tail
       case _ => fail()

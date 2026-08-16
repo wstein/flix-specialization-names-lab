@@ -36,6 +36,15 @@ The wrapper adds verbs of its own, ahead of the compiler's:
   they disagree
 - `flixw`, `flixw.cmd`, `.flixw/flixw.java` — the wrapper itself. Generated;
   change it with `./flixw wrapper --upgrade`, never by hand
+- `scripts/` — lab tooling, each pair invoked by its extensionless (or `.cmd`
+  on Windows) name, never by calling `scala-cli` on the `.scala` file
+  directly: `class-id-report` censuses generated symbol names in an
+  already-built `build/class`; `edit-resistance` recompiles a source file
+  in-process, once clean and once per perturbation, and reports what
+  fraction of generated names and bytes survive each edit. Both need the
+  Flix compiler jar `flixw` already downloaded and digest-verified, which is
+  why the `.scala` files alone have no classpath and are not directly
+  executable
 - `.github/workflows/` — `build-and-test.yaml` on three platforms,
   `update-flix.yaml` weekly, `docs.yaml` for the API documentation. All three
   drive the wrapper; none of them install Flix
