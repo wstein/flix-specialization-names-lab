@@ -146,28 +146,44 @@ the structured pair does, because the two remain distinct at that level
 even when they would render identically.
 
 **Hash collisions** — two genuinely different keys producing the same
-64-bit id — are *detected*, not prevented. `StableName` truncates a SHA-256
-digest to its leading 64 bits (36^13 ≈ 2^67.2, deliberately close to that
-width), and every family that mints one now checks the claim before
-accepting it: `Eraser` (enum and struct specialization), `Specialization`
-(def specialization and anonymous classes), `Namer` (instance-member ids),
-and `Deriver` (derived-def ids for `Eq`/`Order`/`ToString`/`Hash`/`Coerce`)
-each throw `InternalCompilerException` on a genuine collision rather than
-silently letting one specialization overwrite another's cache entry. This
-closes the failure mode the previous version of this section described —
-collision used to be silent; now it is a loud, deterministic build failure.
+64-bit id — are *detected*, not prevented, and detection is scoped to the
+full generated symbol, not the bare id:
 
-Detection, not prevention, because nothing makes a 64-bit collision
-impossible — only unlikely enough to accept. The birthday bound,
-`P(any collision) ≈ n²/2⁶⁵` for `n` minted ids, gives the actual numbers
-rather than an assertion: at 230,000 ids (this compiler's own measured
-baseline for a full standard-library build), `P ≈ 1.4×10⁻⁹` — about one in
-700 million. At 10 million ids, forty times larger than any real Flix
-program compiles to today, `P ≈ 2.7×10⁻⁶` — about one in 370,000. Widening
-to 128 bits was considered and rejected: it roughly doubles every generated
-name (13 → 26 characters) to defend against a scenario that would already
-need a compile several orders of magnitude larger than anything real before
-the odds became worth worrying about.
+> `StableName` retains 64 bits of SHA-256. Hash equality alone is
+> harmless: generated names remain distinct when their enclosing
+> namespace or base text differs. Each generated output symbol is claimed
+> by its full symbol; if a different semantic identity claims that same
+> full symbol, compilation fails rather than silently overwriting
+> generated output.
+
+Every family that mints a generated symbol claims it under this rule
+before accepting it: `Eraser` (enum and struct specialization, keyed on
+the full `EnumSym`/`StructSym`), `Specialization` (def specialization and
+anonymous classes, keyed on the full `DefnSym`/`AnonClassSym`), `Namer`
+(instance-member ids, keyed on the full `DefnSym`), and `Deriver`
+(derived-def ids for `Eq`/`Order`/`ToString`/`Hash`/`Coerce`, keyed on the
+full `DefnSym`) each throw `InternalCompilerException` on a genuine
+collision rather than silently letting one identity overwrite another's
+cache entry. This closes the failure mode the previous version of this
+section described — collision used to be silent; now it is a loud,
+deterministic build failure.
+
+The scope matters as much as the mechanism: two different definitions may
+safely share a hash suffix when their namespace or base text differ,
+since that is what makes them distinct JVM symbols regardless of id. A
+registry keyed on the bare 64-bit id instead of the full symbol would
+false-positive on exactly that case. The first attempt at this guard had
+that bug, worth recording since it is easy to reintroduce: `Namer` and
+`Deriver` originally kept their claimed-id registry keyed by the raw
+`Long` alone. Two unrelated ids from different families — an `Eq[Foo]#eq`
+key and an unrelated `Order[Bar]#compare` key — hashing alike would have
+thrown, even though `"Eq.eq"` and `"Order.compare"` render to different
+final symbols and were never actually going to collide as JVM names.
+`Symbol.DefnSym.equals` already compares id, namespace, and text
+together, so keying the registry by the constructed `DefnSym` itself —
+matching what `Eraser`'s check already did — fixed it. The lesson
+generalizes: a collision guard for a content-addressed name must compare
+the same identity the name itself is built from, not a proxy for it.
 
 Two of the five families above — `Namer` and `Deriver` — mint an id that
 never appears directly in a generated JVM name: an instance member's or
@@ -177,21 +193,32 @@ its own. They still need the identical collision guard, for the identical
 reason: if two unrelated instance members or derived defs were allowed to
 share an id, they would become the same `Symbol.DefnSym` — indistinguishable
 to every phase downstream — long before a class name ever entered the
-picture.
+picture. Anonymous classes are the one family where a bare-id check is
+already correct rather than a shortcut: `AnonClassSym` carries no
+namespace or text at all, so its id *is* its whole identity, and the
+generated name really is just `Anon$<id>`.
 
-The first attempt at this guard had a real bug, worth recording since it is
-easy to reintroduce: `Namer` and `Deriver` originally kept their claimed-id
-registry keyed by the raw 64-bit `Long` alone. Two unrelated ids from
-different families — an `Eq[Foo]#eq` key and an unrelated
-`Order[Bar]#compare` key — hashing alike would have thrown, even though
-`"Eq.eq"` and `"Order.compare"` render to different final symbols and were
-never actually going to collide as JVM names. `Symbol.DefnSym.equals`
-already compares id, namespace, and text together, so keying the registry
-by the constructed `DefnSym` itself — matching what `Eraser`'s
-`EnumSym`/`StructSym` check and `Specialization`'s pre-existing def check
-already did — fixed it. The lesson generalizes: a collision guard for a
-content-addressed name must compare the same identity the name itself is
-built from, not a proxy for it.
+The requirement this leaves is coverage, not a stronger mechanism: every
+place that merges a generated symbol into final output has to perform the
+full-symbol claim, not only the phases that mint one. Two such merge
+boundaries were initially missed — `Specialization`'s `addSpecializedDef`
+(a bare map `put` merging freshly specialized defs with non-parametric
+defs that keep their original, already-content-addressed symbol) and
+`LambdaLift`'s fold of lifted lambdas into the defs produced by
+`Specialization` — both silently overwrite-on-collision rather than
+fail. Both now perform the same full-symbol claim as the minting sites.
+With every mint site and every merge boundary covered, detection is
+sufficient: a full 64-bit collision that also matches namespace and text
+is astronomically unlikely (`P(any collision) ≈ n²/2⁶⁵` for `n` minted
+ids gives `P ≈ 1.4×10⁻⁹` at 230,000 ids — this compiler's own measured
+baseline for a full standard-library build — and `P ≈ 2.7×10⁻⁶` even at
+10 million, forty times larger than any real Flix program compiles to
+today), and where it isn't caught by the birthday bound, it's caught by
+the registry instead. Widening beyond 64 bits, or otherwise trying to
+make a collision structurally impossible, is a reliability/availability
+trade-off from here — not a correctness requirement, since correctness no
+longer depends on collisions never happening, only on none of them
+passing unnoticed.
 
 ## Consequences
 
@@ -217,7 +244,12 @@ built from, not a proxy for it.
   development; it is expected behavior now, not a bug to fix.
 - A compile can now fail outright on a hash collision instead of silently
   merging two unrelated specializations into one class. That trade is
-  accepted deliberately (see Collision policy), but it means a future
-  change that increases how many ids a typical compile mints — a new
-  id-bearing symbol kind, say — should re-check the birthday-bound math
-  above rather than assume the existing margin still holds.
+  accepted deliberately (see Collision policy), but it means two things
+  for future changes: a change that increases how many ids a typical
+  compile mints (a new id-bearing symbol kind, say) should re-check the
+  birthday-bound math rather than assume the existing margin still holds,
+  and a new phase or code path that merges a generated symbol into final
+  output has to perform the same full-symbol claim the existing merge
+  boundaries do — the two that were initially missed here were caught by
+  review, not by a test failing, and nothing in the type system enforces
+  the pattern.
