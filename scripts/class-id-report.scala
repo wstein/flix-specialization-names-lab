@@ -16,7 +16,7 @@ import scala.util.Using
  * The script never invokes the Flix compiler. It supports both decimal GenSym
  * suffixes from older output and fixed-width base-36 SHA-256 suffixes from newer output.
  */
-object TraceFreshIds extends App {
+object ClassIdReport extends App {
   val config = Arguments.parse(args.toList)
   val input = config.input
   val outputDir = config.outputDir
