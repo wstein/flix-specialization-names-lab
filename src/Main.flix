@@ -424,6 +424,21 @@ def manyInstantiations(): Int32 = {
     List.length(parts)
 }
 
+// Two lambdas lifted out of *this* definition rather than inlined into the library
+// function they are passed to. Both capture `n`, so they become closures, and both
+// escape by being returned, so neither can be optimized away. This is what makes the
+// definition able to test whether inserting a lambda renumbers the ones after it:
+// elsewhere in this file the lambdas are inlined into specializations of `List.map`
+// and so are lifted out of those instead.
+def liftedClosures(n: Int32): (Int32 -> Int32, Int32 -> Int32) =
+    let f = x -> x + n;
+    let g = y -> y * n;
+    (f, g)
+
+def liftedClosuresDemo(): Int32 =
+    let (f, g) = liftedClosures(3);
+    f(10) + g(10)
+
 // The same stdlib higher-order functions applied at many element types, so the
 // library defs they call are specialized repeatedly rather than once.
 def repeatedStdlibDemo(): Int32 = {
@@ -531,6 +546,7 @@ def main(): Unit \ {Chan, NonDet, IO} = {
     println("DemoBox (polymorphic struct): ${boxDemo()}");
     println("Anon class: ${anonClassDemo()}");
     println("Instantiations: ${manyInstantiations()}");
+    println("Lifted closures: ${liftedClosuresDemo()}");
     println("Repeated stdlib: ${repeatedStdlibDemo()}");
 
     println("=== Done ===")

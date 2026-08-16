@@ -39,3 +39,7 @@ def testManyInstantiations(): Unit \ Assert =
 @Test
 def testRepeatedStdlibDemo(): Unit \ Assert =
     Assert.assertEq(expected = 19, repeatedStdlibDemo())
+
+@Test
+def testLiftedClosuresDemo(): Unit \ Assert =
+    Assert.assertEq(expected = 43, liftedClosuresDemo())

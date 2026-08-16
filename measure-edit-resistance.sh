@@ -97,6 +97,29 @@ p=sys.argv[1]; s=open(p).read()
 open(p,"w").write(s+"\ndef unrelatedAddition(x: Int32): Int32 = x + 1\n")
 '
 
+# The direct test of renumbering: `liftedClosures` has two lambdas lifted out of it, and
+# this adds a third ahead of both. Getting a lambda to survive that far takes some care —
+# it must capture, so it becomes a closure, and escape, so it is not inlined into its only
+# use. Returning it does both.
+perturb "insert a lifted closure ahead of two" '
+import sys
+p=sys.argv[1]; s=open(p).read()
+old="""def liftedClosures(n: Int32): (Int32 -> Int32, Int32 -> Int32) =
+    let f = x -> x + n;
+    let g = y -> y * n;
+    (f, g)"""
+new="""def liftedClosures(n: Int32): (Int32 -> Int32, Int32 -> Int32, Int32 -> Int32) =
+    let h = z -> z - n;
+    let f = x -> x + n;
+    let g = y -> y * n;
+    (h, f, g)"""
+assert old in s, "anchor missing"
+s=s.replace(old,new,1)
+s=s.replace("let (f, g) = liftedClosures(3);","let (h, f, g) = liftedClosures(3);",1)
+s=s.replace("f(10) + g(10)","h(10) + f(10) + g(10)",1)
+open(p,"w").write(s)
+'
+
 # The inserted lambda has to reach code generation, so its result is used. An unused
 # binding is optimized away and would leave the output untouched, measuring nothing.
 perturb "insert a lambda earlier in a def" '
@@ -112,8 +135,12 @@ open(p,"w").write(s)
 echo
 echo "A name that survives is one a downstream cache can keep."
 echo
-echo "Caveat: the lambdas in this program are inlined into specializations of the library"
-echo "functions they are passed to, so they are lifted out of those rather than out of the"
-echo "definition that wrote them. That makes this corpus weak evidence about renumbering"
-echo "within a single definition; a program with two lambdas lifted from one def would test"
-echo "it directly."
+echo "The 'lifted closure ahead of two' row is the direct test of renumbering: liftedClosures"
+echo "has two lambdas lifted out of it, and the edit adds a third ahead of both. Lifted names"
+echo "are keyed on an occurrence index within the enclosing definition, so inserting one was"
+echo "expected to shift the others and rename them. It does not. Why the index is unaffected"
+echo "has not been established, so read this as an observation, not a guarantee."
+echo
+echo "The other lambdas in this program are inlined into specializations of the library"
+echo "functions they are passed to, so they are lifted out of those instead. That is why a"
+echo "definition holding its own lambdas had to be written for this measurement."
