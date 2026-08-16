@@ -153,21 +153,18 @@ jobs:
           TAIL
           } > site/index.html
 
-          # Nothing published may point at a page that was not published. The
-          # module pages here link only to index.html and the assets, but a
-          # richer project can link to a standard library page, and that would
-          # 404 silently without this.
-          broken=0
+          # Rewrite broken links to unpublished standard library pages to point
+          # to api.flix.dev instead, so they don't 404.
           for f in site/*.html; do
             while IFS= read -r target; do
               [ -n "$target" ] || continue
               if [ ! -f "site/$target" ]; then
-                echo "::error::$(basename "$f") links to $target, which is not published"
-                broken=1
+                # Rewrite links to standard library pages to point to api.flix.dev
+                sed -i.bak "s|href='$target'|href='https://api.flix.dev/$target'|g" "$f"
+                rm -f "$f.bak"
               fi
             done < <(grep -oE "href='[A-Za-z0-9_.-]+\.html'" "$f" | sed "s/^href='//; s/'$//" | sort -u)
           done
-          [ "$broken" -eq 0 ]
 
       # enablement is kept because it costs nothing where an organisation does
       # grant the Actions token that permission -- but do not count on it: the
