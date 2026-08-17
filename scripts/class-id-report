@@ -7,6 +7,7 @@
 #
 # Usage:
 #   ./scripts/class-id-report [class-directory-or-jar] [--output-dir directory] [--json]
+#                              [--stable-width n]
 # Deliberately does not `cd` anywhere: a class-directory-or-jar argument, or
 # --output-dir, is a path the caller gave relative to wherever they are, and
 # resolving it against this script's own directory instead -- as `cd`-ing

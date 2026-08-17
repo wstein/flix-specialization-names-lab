@@ -45,32 +45,39 @@ object ClassIdReport extends App {
     val symbolRows = files.flatMap { path =>
       ClassFile.read(path).toList.flatMap { info =>
         val relative = root.relativize(path).toString
-        ClassFile.symbols(info, relative)
+        ClassFile.symbols(info, relative, config.stableWidth)
       }
     }
     (files, symbolRows)
   }
 
-  val ids = rows.iterator.flatMap(row => Ids.in(row.symbol)).toSet
+  val ids = rows.iterator.flatMap(row => Ids.in(row.symbol, config.stableWidth)).toSet
   val timestamp = DateTimeFormatter.ofPattern("yyMMdd-HHmm").format(LocalDateTime.now())
   val symbolsFile = outputDir.resolve(s"symbols-$timestamp.csv")
   val idsFile = outputDir.resolve(s"ids-$timestamp.txt")
 
   Files.writeString(symbolsFile, Csv.header + System.lineSeparator + rows.map(_.csv).mkString(System.lineSeparator()) + (if (rows.nonEmpty) System.lineSeparator() else ""))
-  Files.writeString(idsFile, ids.toList.sortBy(Ids.order).mkString("", System.lineSeparator(), if (ids.nonEmpty) System.lineSeparator() else ""))
+  Files.writeString(idsFile, ids.toList.sortBy(id => Ids.order(id, config.stableWidth)).mkString("", System.lineSeparator(), if (ids.nonEmpty) System.lineSeparator() else ""))
 
-  val report = Report(input, classFiles.size, rows.size, ids.size, ids.count(Ids.isCounter), symbolsFile, idsFile)
+  val report = Report(input, classFiles.size, rows.size, ids.size, ids.count(Ids.isCounter(_, config.stableWidth)), config.stableWidth, symbolsFile, idsFile)
   println(Reports.render(report, config.format))
 }
 
 object Arguments {
-  private val Usage = "Usage: ./scripts/class-id-report [class-directory-or-jar] [--output-dir directory] [--json]"
+  // --Xstable-name-length narrows the compiler's stable-id suffix below its default, and
+  // this census has no way to ask a build what width it actually used -- it never invokes
+  // the compiler. 12 is the default here because it is the compiler's own current default.
+  private val DefaultStableWidth = 12
+
+  private val Usage = "Usage: ./scripts/class-id-report [class-directory-or-jar] [--output-dir directory] [--json]\n" +
+    s"                                  [--stable-width n]  (default: $DefaultStableWidth)"
 
   def parse(args: List[String]): Config = {
     var input = Paths.get("build/class")
     var inputSet = false
     var outputDir = Paths.get(".")
     var format: ReportFormat = ReportFormat.Text
+    var stableWidth = DefaultStableWidth
     var remaining = args
 
     def select(next: ReportFormat): Unit = {
@@ -81,12 +88,15 @@ object Arguments {
     while (remaining.nonEmpty) remaining match {
       case "--json" :: tail => select(ReportFormat.Json); remaining = tail
       case ("--output-dir" | "-o") :: directory :: tail => outputDir = Paths.get(directory); remaining = tail
+      case "--stable-width" :: width :: tail =>
+        stableWidth = width.toIntOption.getOrElse(fail())
+        remaining = tail
       case ("-h" | "--help") :: _ => println(Usage); sys.exit(0)
       case path :: tail if !path.startsWith("-") && !inputSet =>
         input = Paths.get(path); inputSet = true; remaining = tail
       case _ => fail()
     }
-    Config(input, outputDir, format)
+    Config(input, outputDir, format, stableWidth)
   }
 
   private def fail(): Nothing = {
@@ -101,8 +111,8 @@ object ReportFormat {
   case object Json extends ReportFormat
 }
 
-case class Config(input: Path, outputDir: Path, format: ReportFormat)
-case class Report(input: Path, classFiles: Int, symbols: Int, uniqueIds: Int, counters: Int, symbolsFile: Path, idsFile: Path) {
+case class Config(input: Path, outputDir: Path, format: ReportFormat, stableWidth: Int)
+case class Report(input: Path, classFiles: Int, symbols: Int, uniqueIds: Int, counters: Int, stableWidth: Int, symbolsFile: Path, idsFile: Path) {
   def hashes: Int = uniqueIds - counters
 }
 
@@ -115,6 +125,7 @@ object Reports {
   private def text(report: Report): String = List(
     "Generated-class ID census",
     s"  input: ${report.input}",
+    s"  stable-id width assumed: ${report.stableWidth}",
     s"  class files: ${report.classFiles}",
     s"  symbols: ${report.symbols}",
     s"  unique generated IDs: ${report.uniqueIds}",
@@ -125,7 +136,7 @@ object Reports {
   ).mkString(System.lineSeparator())
 
   private def json(report: Report): String =
-    s"""{"input":"${escapeJson(report.input.toString)}","class_files":${report.classFiles},"symbols":${report.symbols},"unique_generated_ids":${report.uniqueIds},"id_kinds":{"sequential_counter":${report.counters},"sha256_hash_derived":${report.hashes}},"outputs":{"symbols_csv":"${escapeJson(report.symbolsFile.toString)}","ids_txt":"${escapeJson(report.idsFile.toString)}"}}"""
+    s"""{"input":"${escapeJson(report.input.toString)}","stable_width":${report.stableWidth},"class_files":${report.classFiles},"symbols":${report.symbols},"unique_generated_ids":${report.uniqueIds},"id_kinds":{"sequential_counter":${report.counters},"sha256_hash_derived":${report.hashes}},"outputs":{"symbols_csv":"${escapeJson(report.symbolsFile.toString)}","ids_txt":"${escapeJson(report.idsFile.toString)}"}}"""
 
   private def escapeJson(value: String): String = value.flatMap {
     case '"' => "\\\""
@@ -141,26 +152,29 @@ object Reports {
 }
 
 object Ids {
-  // A 13-digit decimal counter would be indistinguishable from a base-36 stable id and
-  // so get classified as one; accepted rather than fixed, since nothing mints one. The
-  // stable-name families that ever reach a class/method/field name no longer use a
+  // Stable-id width is not fixed: --Xstable-name-length changes it, and this script has to
+  // be told what width a given build actually used, since it never invokes the compiler
+  // and so cannot ask. A `width`-digit decimal counter would be indistinguishable
+  // from a base-36 stable id of the same width and so get classified as one; accepted
+  // rather than fixed, since nothing realistic mints a counter anywhere near that large.
+  // The stable-name families that ever reach a class/method/field name no longer use a
   // counter at all, and the counter-based ids this script also has to read from older
   // compiler output peak at roughly the number of ids minted per compile -- about
-  // 230,000 (six digits) for a full stdlib build -- many orders of magnitude short of
-  // the ~10^12 a 13-digit value would require.
-  private val Stable = "\\$([0-9a-z]{13})(?![0-9a-z])".r
+  // 230,000 (six digits) for a full stdlib build -- many orders of magnitude short of what
+  // even the narrowest realistic --Xstable-name-length already tolerates.
+  private def stable(width: Int): scala.util.matching.Regex = s"\\$$([0-9a-z]{$width})(?![0-9a-z])".r
   private val Counter = "\\$(\\d+)(?![0-9a-z])".r
 
-  def in(text: String): List[String] = {
-    val stable = Stable.findAllMatchIn(text).map(_.group(1)).toList
-    val counter = Counter.findAllMatchIn(text).map(_.group(1)).filter(_.length != 13).toList
-    stable ++ counter
+  def in(text: String, width: Int): List[String] = {
+    val stableIds = stable(width).findAllMatchIn(text).map(_.group(1)).toList
+    val counter = Counter.findAllMatchIn(text).map(_.group(1)).filter(_.length != width).toList
+    stableIds ++ counter
   }
 
-  def isCounter(id: String): Boolean = id.forall(_.isDigit) && id.length != 13
+  def isCounter(id: String, width: Int): Boolean = id.forall(_.isDigit) && id.length != width
 
-  def order(id: String): (Int, BigInt, String) =
-    if (isCounter(id)) (0, BigInt(id), "") else (1, BigInt(0), id)
+  def order(id: String, width: Int): (Int, BigInt, String) =
+    if (isCounter(id, width)) (0, BigInt(id), "") else (1, BigInt(0), id)
 }
 
 case class SymbolRow(kind: String, clazz: String, symbol: String, id: String, descriptor: String, signature: String, file: String) {
@@ -238,17 +252,17 @@ object ClassFile {
         None
     }
 
-  def symbols(info: Info, file: String): List[SymbolRow] = {
-    val classId = Ids.in(info.name).mkString(",")
+  def symbols(info: Info, file: String, stableWidth: Int): List[SymbolRow] = {
+    val classId = Ids.in(info.name, stableWidth).mkString(",")
     val classRow = SymbolRow("class", info.name, info.name, classId, "", s"class ${info.name}" + (if (info.superName.nonEmpty) s" extends ${info.superName}" else ""), file)
     val fieldRows = info.fields.map { field =>
       val symbol = s"${info.name}.${field.name}"
-      SymbolRow("field", info.name, symbol, Ids.in(symbol).mkString(","), field.descriptor, s"${descriptorType(field.descriptor)} ${field.name}", file)
+      SymbolRow("field", info.name, symbol, Ids.in(symbol, stableWidth).mkString(","), field.descriptor, s"${descriptorType(field.descriptor)} ${field.name}", file)
     }
     val methodRows = info.methods.map { method =>
       val symbol = s"${info.name}::${method.name}"
       val (parameters, result) = methodDescriptor(method.descriptor)
-      SymbolRow("method", info.name, symbol, Ids.in(symbol).mkString(","), method.descriptor, s"${method.name}(${parameters.mkString(", ")}): $result", file)
+      SymbolRow("method", info.name, symbol, Ids.in(symbol, stableWidth).mkString(","), method.descriptor, s"${method.name}(${parameters.mkString(", ")}): $result", file)
     }
     classRow :: fieldRows ::: methodRows
   }

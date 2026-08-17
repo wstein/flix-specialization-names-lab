@@ -6,6 +6,7 @@ rem name, never by calling scala-cli on the .scala file itself.
 rem
 rem Usage:
 rem   scripts\class-id-report.cmd [class-directory-or-jar] [--output-dir directory] [--json]
+rem                                [--stable-width n]
 rem
 rem Deliberately does not `cd` anywhere: a class-directory-or-jar argument, or
 rem --output-dir, is a path the caller gave relative to wherever they are, and
