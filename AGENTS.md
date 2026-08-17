@@ -45,9 +45,12 @@ The wrapper adds verbs of its own, ahead of the compiler's:
   `collision-stress` generates enough distinct specializations of one
   generic def to make a stable-name collision likely at a given
   `--Xstable-name-length` width, compiles them for real, and reports
-  whether the compiler's collision guard caught it. `class-id-report`
-  never needs a compiler at all; `edit-resistance` and `collision-stress`
-  both compile against whichever jar they are pointed at (`--flix-jar`,
+  whether the compiler's collision guard caught it; `duplicate-decl-stress`
+  is the front-end counterpart, generating many byte-identical duplicate
+  top-level declarations and checking that every one stays cited at its
+  own source line even though their content is indistinguishable.
+  `class-id-report` never needs a compiler at all; the other three both
+  compile against whichever jar they are pointed at (`--flix-jar`,
   `$FLIX_JAR`, `./flix.jar`, or `flix` on `$PATH`), deliberately never
   through `flixw`, since comparing or stress-testing arbitrary builds is
   the point and `flixw` holds only one pinned jar at a time. Either way,

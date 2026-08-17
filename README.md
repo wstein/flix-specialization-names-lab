@@ -49,7 +49,13 @@ The workflow, carried over from the exploration on the
    whether the compiler's collision guard caught it or let it through
    silently — measuring the collision policy instead of only reasoning
    about it from the birthday bound.
-5. Comparing that census across recompiles — with and without unrelated
+5. **`scripts/duplicate-decl-stress`** — the front-end counterpart:
+   generates many byte-identical duplicate top-level declarations and
+   checks that every one is still cited at its own source line, so an
+   incorrect program stays individually diagnosable (and stays usable by
+   IDE services keyed on the same symbols) even when its declarations are
+   indistinguishable by content alone.
+6. Comparing that census across recompiles — with and without unrelated
    source edits — is what shows whether a naming scheme is actually stable:
    a hash-derived id should reappear unchanged; a counter-derived one
    renumbers as soon as an earlier declaration shifts.
@@ -82,9 +88,10 @@ it outside the repository, and runs it. Later commands reuse the cache.
 ├── test/
 │   └── TestMain.flix             @Test functions covering AllConstructs.flix
 ├── scripts/
-│   ├── class-id-report(.scala|.cmd)    censuses generated symbol names in build/class
-│   ├── edit-resistance(.scala|.cmd)    measures name/byte survival across perturbations
-│   └── collision-stress(.scala|.cmd)   tries to trigger a stable-name collision for real
+│   ├── class-id-report(.scala|.cmd)         censuses generated symbol names in build/class
+│   ├── edit-resistance(.scala|.cmd)         measures name/byte survival across perturbations
+│   ├── collision-stress(.scala|.cmd)        tries to trigger a stable-name collision for real
+│   └── duplicate-decl-stress(.scala|.cmd)   checks identical duplicate decls stay diagnosable
 ├── docs/
 │   └── adr/                      architecture decision records, e.g. the naming scheme
 ├── .flixw/
@@ -175,8 +182,9 @@ the demo lives at `src/AllConstructs.flix` (not the `hello.flix` name used
 on that branch — it isn't a hello-world, so it's named for what it actually
 is: `main`'s own banner already called it "Flix All Constructs
 Demonstration"), alongside `test/TestMain.flix` and real `flix.toml`
-metadata, and `scripts/class-id-report`, `scripts/edit-resistance`, and
-`scripts/collision-stress` are in place under `scripts/`.
+metadata, and `scripts/class-id-report`, `scripts/edit-resistance`,
+`scripts/collision-stress`, and `scripts/duplicate-decl-stress` are in
+place under `scripts/`.
 
 The Flix and `flixw` badges read `.flixw/lock.toml` directly, so re-pinning with
 `./flixw pin <version>` updates them without touching this file.

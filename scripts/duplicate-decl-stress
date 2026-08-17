@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# Runs duplicate-decl-stress.scala against a Flix compiler jar. `scala-cli`'s
+# `using jar` directive is a static literal -- it cannot shell out or read an
+# env var -- so duplicate-decl-stress.scala alone has no classpath and running
+# it with `scala-cli run` directly fails to compile. This resolves the jar and
+# hands it to scala-cli as `--jar`, the same way scripts/edit-resistance and
+# scripts/collision-stress do.
+#
+# This never goes through flixw, on purpose, same reason as the other two lab scripts:
+# flixw holds only one pinned jar at a time, and checking an arbitrary build (to see
+# whether a frontend change affected duplicate-declaration diagnostics) is the point. Jar
+# resolution, in order, first match wins:
+#   1. --flix-jar <path>  passed on this script's own command line
+#   2. $FLIX_JAR          same override convention flixw itself uses for
+#                         running a compiler it did not download (see
+#                         .envrc.example); unverified, same as there
+#   3. ./flix.jar         a jar placed at the project root by hand
+#   4. `flix` on $PATH    whatever a system-installed Flix resolves to.
+#                         Only works if that is itself a jar (or a
+#                         polyglot self-executing one, e.g. a shebang
+#                         prepended to a real jar) -- scala-cli's --jar
+#                         needs an actual jar, not a launcher script, and
+#                         this is unverified either way
+#
+# Usage:
+#   ./scripts/duplicate-decl-stress
+#   ./scripts/duplicate-decl-stress --count 500
+#   ./scripts/duplicate-decl-stress --flix-jar path/to/flix.jar
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/duplicate-decl-stress [--flix-jar path/to/flix.jar]
+                                        [--count n] [--compiler-version string]
+
+Generates `count` byte-identical top-level declarations of the same def, compiles
+them, and checks that every one is still cited at its own source line across the
+reported errors -- i.e. that identical content never gets merged, dropped, or
+misattributed just because two declarations read the same.
+
+Options:
+  --flix-jar <path>        Flix compiler jar to compile against. Overrides
+                            every other source below.
+  --count <n>               How many identical duplicate declarations to
+                            generate (default: 50).
+  --compiler-version <str> Label the report with what produced it. If not
+                            given, this asks the resolved jar directly
+                            (`java -jar ... --version`) and appends a short
+                            digest of its own bytes, since two builds can
+                            share a version string while differing in
+                            every byte.
+  -h, --help                Show this help and exit.
+
+Jar resolution when --flix-jar is not given, first match wins. This never
+consults flixw, even if present: it deliberately holds only one pinned jar,
+and this needs to point at whatever build is being checked.
+  1. $FLIX_JAR        unverified, as in .envrc.example
+  2. ./flix.jar        a jar placed at the project root by hand
+  3. `flix` on $PATH   a system-installed Flix, if it resolves to a jar
+EOF
+}
+
+# Parsed here, ahead of everything else below, so --help/-h short-circuits before
+# resolving a jar.
+jar=${FLIX_JAR:-}
+compiler_version=""
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --flix-jar)
+      jar=$2
+      shift 2
+      ;;
+    --flix-jar=*)
+      jar=${1#--flix-jar=}
+      shift
+      ;;
+    --compiler-version)
+      compiler_version=$2
+      shift 2
+      ;;
+    --compiler-version=*)
+      compiler_version=${1#--compiler-version=}
+      shift
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Deliberately does not `cd` anywhere: --flix-jar is a path the caller gave relative to
+# wherever they are, and resolving it against this script's own directory instead would
+# silently look for a jar in the wrong place when invoked via a relative path from outside
+# the project. ./flix.jar is still anchored to the project root explicitly below, since
+# that fallback means "a jar placed at the project root by hand", not "in the caller's cwd".
+root=$(cd "$(dirname "$0")/.." && pwd)
+
+if [ -z "$jar" ] && [ -f "$root/flix.jar" ]; then
+  jar="$root/flix.jar"
+fi
+
+if [ -z "$jar" ]; then
+  jar=$(command -v flix) || true
+fi
+
+if [ -z "$jar" ] || [ ! -f "$jar" ]; then
+  echo "error: no Flix compiler jar found (tried \$FLIX_JAR, $root/flix.jar, and 'flix' on \$PATH)" >&2
+  echo "place a jar at $root/flix.jar, or pass --flix-jar" >&2
+  exit 1
+fi
+
+# Labeling the report: an explicit --compiler-version always wins. Otherwise this asks the
+# jar itself (java -jar ... --version) rather than parsing its cache filename -- that works
+# no matter what the file is named or where it came from. The version alone is not enough:
+# two builds can print the identical version string while differing in every byte -- so a
+# self-computed digest (a short prefix, git-style) is always appended too.
+if [ -z "$compiler_version" ]; then
+  version=$(java -jar "$jar" --version 2>/dev/null | awk '{print $NF}') || true
+  digest=$( (shasum -a 256 "$jar" 2>/dev/null || sha256sum "$jar" 2>/dev/null) | awk '{print $1}') || true
+  if [ -n "$version" ] && [ -n "$digest" ]; then
+    compiler_version="$version (${digest:0:12})"
+  elif [ -n "$version" ]; then
+    compiler_version=$version
+  else
+    compiler_version=$jar
+  fi
+fi
+
+# -Xss128m, defensively: unlike scripts/collision-stress, this doesn't generate one deeply
+# nested expression (each duplicate is its own flat top-level def), so the risk is lower --
+# but the namer's own duplicate-checking recursion depth as --count grows isn't verified
+# either way, and the cost of the larger stack up front is negligible.
+exec scala-cli run "$root/scripts/duplicate-decl-stress.scala" --jvm 21 --jar "$jar" -J -Xss128m -- --compiler-version "$compiler_version" "${args[@]}"
