@@ -14,13 +14,7 @@ content-addressed SHA-256 suffix (13 lowercase base-36 characters) so a
 specialization's name is stable across recompiles and only changes when the
 code it names actually changes.
 
-This repository is scaffolded from
-[`flix-template`](https://github.com/wstein/flix-template) and inherits its
-[`flixw`](https://github.com/wstein/flixw) bootstrap — a repository-local
-wrapper that fetches the pinned compiler instead of relying on whatever
-`flix` happens to be installed, which matters here because the lab needs to
-run two different compiler builds (counter-suffix vs. hash-suffix) against
-the same source.
+The lab's own scripts (`edit-resistance`, `collision-stress`, `duplicate-decl-stress`) resolve a jar from `--flix-jar`/`$FLIX_JAR`, which is what actually lets the lab run two different compiler builds (counter-suffix vs. hash-suffix) against the same source.
 
 ## What the lab measures
 
