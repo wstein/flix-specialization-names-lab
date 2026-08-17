@@ -43,6 +43,7 @@ import scala.jdk.CollectionConverters._
   * {{{
   *   ./scripts/fixtures-check
   *   ./scripts/fixtures-check --flix-jar path/to/flix.jar
+  *   ./scripts/fixtures-check -v   # print every reported error, not just the count
   * }}}
   *
   * `scripts/fixtures-check` resolves a Flix compiler jar the same way the other three lab
@@ -52,7 +53,7 @@ import scala.jdk.CollectionConverters._
   */
 object FixturesCheck {
 
-  private case class Config(compilerVersion: Option[String])
+  private case class Config(compilerVersion: Option[String], verbose: Boolean)
 
   def main(args: Array[String]): Unit = {
     val config = parseArgs(args.toList)
@@ -63,8 +64,8 @@ object FixturesCheck {
     val positiveDir = root.resolve("fixtures/positive")
     val negativeDir = root.resolve("fixtures/negative")
 
-    val positiveResults = checkAll(positiveDir, expectSuccess = true)
-    val negativeResults = checkAll(negativeDir, expectSuccess = false)
+    val positiveResults = checkAll(positiveDir, expectSuccess = true, config.verbose)
+    val negativeResults = checkAll(negativeDir, expectSuccess = false, config.verbose)
     val allResults = positiveResults ++ negativeResults
 
     println()
@@ -81,7 +82,7 @@ object FixturesCheck {
     * Compiles every `.flix` file directly under `dir` and reports PASS/FAIL against
     * `expectSuccess`. Returns one boolean per file, in the order checked.
     */
-  private def checkAll(dir: Path, expectSuccess: Boolean): List[Boolean] = {
+  private def checkAll(dir: Path, expectSuccess: Boolean, verbose: Boolean): List[Boolean] = {
     if (!Files.isDirectory(dir)) {
       Console.err.println(s"$dir: not a directory")
       return Nil
@@ -91,10 +92,10 @@ object FixturesCheck {
       .sortBy(_.getFileName.toString)
     val label = if (expectSuccess) "must compile" else "must fail gracefully"
     println(s"${dir.getFileName} ($label):")
-    files.map(f => check(f, expectSuccess))
+    files.map(f => check(f, expectSuccess, verbose))
   }
 
-  private def check(file: Path, expectSuccess: Boolean): Boolean = {
+  private def check(file: Path, expectSuccess: Boolean, verbose: Boolean): Boolean = {
     val name = file.getFileName.toString
     val source = new String(Files.readAllBytes(file), java.nio.charset.StandardCharsets.UTF_8)
 
@@ -116,9 +117,11 @@ object FixturesCheck {
         case Validation.Failure(errors) =>
           if (expectSuccess) {
             println(f"  FAIL  $name%-32s did not compile: ${errors.head}")
+            if (verbose) printErrors(errors.toList)
             false
           } else {
             println(f"  PASS  $name%-32s failed gracefully (${errors.toList.size} error(s))")
+            if (verbose) printErrors(errors.toList)
             true
           }
       }
@@ -129,16 +132,24 @@ object FixturesCheck {
     }
   }
 
+  private def printErrors(errors: List[_]): Unit = {
+    for (e <- errors) {
+      println(s"        - $e")
+    }
+  }
+
   private def parseArgs(args: List[String]): Config = {
     var compilerVersion: Option[String] = None
+    var verbose = false
     var remaining = args
     while (remaining.nonEmpty) remaining match {
       case "--compiler-version" :: value :: tail => compilerVersion = Some(value); remaining = tail
+      case ("-v" | "--verbose") :: tail => verbose = true; remaining = tail
       case other :: _ =>
         Console.err.println(s"unrecognized argument: $other")
         sys.exit(2)
       case Nil => ()
     }
-    Config(compilerVersion)
+    Config(compilerVersion, verbose)
   }
 }

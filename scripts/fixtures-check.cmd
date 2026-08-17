@@ -53,7 +53,7 @@ shift
 goto parse
 
 :usage
-echo Usage: scripts\fixtures-check.cmd [--flix-jar path\to\flix.jar] [--compiler-version string]
+echo Usage: scripts\fixtures-check.cmd [--flix-jar path\to\flix.jar] [--compiler-version string] [-v]
 echo(
 echo Compiles every file under fixtures\positive\ (must succeed) and fixtures\negative\
 echo (must fail gracefully -- a reported error, not a crash^), and reports PASS/FAIL for each.
@@ -65,6 +65,8 @@ echo   --compiler-version ^<str^> Label the report with what produced it. If
 echo                             not given, this asks the resolved jar
 echo                             directly (java -jar ... --version^) and
 echo                             appends a short digest of its own bytes.
+echo   -v, --verbose             Print every reported error's message, not
+echo                             just the count.
 echo   -h, --help                Show this help and exit.
 echo(
 echo Jar resolution when --flix-jar is not given, first match wins. This never

@@ -30,7 +30,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/fixtures-check [--flix-jar path/to/flix.jar] [--compiler-version string]
+Usage: ./scripts/fixtures-check [--flix-jar path/to/flix.jar] [--compiler-version string] [-v]
 
 Compiles every file under fixtures/positive/ (must succeed) and fixtures/negative/
 (must fail gracefully -- a reported error, not a crash), and reports PASS/FAIL for each.
@@ -44,6 +44,10 @@ Options:
                             digest of its own bytes, since two builds can
                             share a version string while differing in
                             every byte.
+  -v, --verbose             Print every reported error's message, not just
+                             the count -- useful to confirm a negative
+                             fixture failed for the reason its header
+                             comment claims, not some other one.
   -h, --help                Show this help and exit.
 
 Jar resolution when --flix-jar is not given, first match wins. This never
