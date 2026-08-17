@@ -55,6 +55,14 @@ The workflow, carried over from the exploration on the
      (specialized defs, struct specialization, enum cases, lifted lambdas,
      anonymous classes, instance member defs, derived instance defs), each accompanied
      by a golden `.out` runtime output snapshot and a `.names` stable symbol snapshot.
+     Each `.names` line is `<class path> <kind>`, where `kind` is `hash` (a
+     content-addressed id), `counter` (a classic incrementing one — a regression
+     for anything under `pass/`), or `none` (a literal name with no id at all,
+     e.g. an unspecialized enum case tag). A plain path-only diff can't tell "the
+     hash rotated because of an unrelated edit" apart from "this stopped being a
+     hash at all"; the classification makes that distinction part of the
+     snapshot, checked on every run — not just when `-u` regenerates it — so a
+     regression can't get silently re-baked into a golden file.
    - `fail/` (6 negative fixtures) covers duplicate-declaration patterns
      `duplicate-decl-stress` does not parametrically reach (enum, struct, trait,
      instance, instance def, and trait derivation), each accompanied by a golden

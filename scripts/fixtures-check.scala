@@ -132,35 +132,58 @@ object FixturesCheck {
             return false
           }
 
-          val fixtureClasses = result.getClasses.keys.map { jvmName =>
-            (jvmName.pkg :+ s"${jvmName.name}.class").mkString("/")
-          }.filter(isFixtureClass).toList.sorted
+          val fixtureEntries = result.getClasses.keys.flatMap { jvmName =>
+            val path = (jvmName.pkg :+ s"${jvmName.name}.class").mkString("/")
+            matchedPrefix(path).map(prefix => path -> classify(path, prefix))
+          }.toList.sortBy(_._1)
+          val rendered = fixtureEntries.map { case (path, kind) => s"$path $kind" }
 
-          val isCounterId = fixtureClasses.exists(c => c.matches(".*\\$[0-9]+(\\..*)?$"))
-          val hasStableNames = isStable || (!isCounterId && fixtureClasses.exists(c => c.matches(".*\\$[a-z0-9]{8,}.*")))
+          val hasHash = fixtureEntries.exists(_._2 == "hash")
+          val counters = fixtureEntries.collect { case (path, "counter") => path }
 
           val namesFile = namesFileOpt.getOrElse(file.getParent.resolve(s"$stem.names"))
           val namesFileName = namesFile.getFileName.toString
-          if (config.updateSnapshots && hasStableNames) {
-            Files.write(namesFile, (fixtureClasses.mkString("\n") + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
-            println(f"  PASS  $name%-32s compiled, updated $namesFileName (${fixtureClasses.size} class(es))")
+
+          // `isStable` alone cannot gate this: `java -jar ... --version` never echoes the
+          // "+stable.names.N" build metadata that lives only in .flixw/lock.toml, so it is
+          // false on every ordinary wrapper-driven run against this project's own pinned
+          // fork -- relying on it here would make the whole check silently inert. A prior
+          // golden snapshot recording at least one hash id is the more durable signal: once
+          // a fixture has demonstrated it mints a content-addressed id, that id going away
+          // is a regression to fail on, not license to fall back to "stock compiler, skip".
+          val hadStableSnapshot = Files.exists(namesFile) &&
+            new String(Files.readAllBytes(namesFile), java.nio.charset.StandardCharsets.UTF_8).linesIterator.exists(_.endsWith(" hash"))
+          val hasStableNames = isStable || hasHash || hadStableSnapshot
+
+          // A counter-shaped id anywhere a hash was expected -- this run producing one, or
+          // any prior snapshot ever having recorded one -- is a regression worth failing
+          // loudly on, independent of whether it happens to match (or gets baked into, via
+          // -u) a stale snapshot: the whole point of these fixtures is that every
+          // id-minting family they exercise mints a content-addressed hash, never a classic
+          // incrementing counter.
+          if (hasStableNames && counters.nonEmpty) {
+            println(f"  FAIL  $name%-32s minted a counter-shaped id where a content-addressed hash was expected: ${counters.mkString(", ")}")
+            false
+          } else if (config.updateSnapshots && hasStableNames) {
+            Files.write(namesFile, (rendered.mkString("\n") + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+            println(f"  PASS  $name%-32s compiled, updated $namesFileName (${rendered.size} class(es))")
             true
           } else if (hasStableNames && Files.exists(namesFile)) {
             val expected = new String(Files.readAllBytes(namesFile), java.nio.charset.StandardCharsets.UTF_8).trim.linesIterator.toList.filter(_.nonEmpty)
-            if (fixtureClasses == expected) {
-              println(f"  PASS  $name%-32s compiled, matched $namesFileName (${fixtureClasses.size} stable class(es))")
+            if (rendered == expected) {
+              println(f"  PASS  $name%-32s compiled, matched $namesFileName (${rendered.size} stable class(es))")
               true
             } else {
               println(f"  FAIL  $name%-32s generated classes do not match $namesFileName")
               println(s"        expected: $expected")
-              println(s"        actual:   $fixtureClasses")
+              println(s"        actual:   $rendered")
               false
             }
           } else if (!hasStableNames) {
             println(f"  PASS  $name%-32s compiled (stable.names check skipped on stock compiler)")
             true
           } else {
-            println(f"  PASS  $name%-32s compiled (${fixtureClasses.size} class(es))")
+            println(f"  PASS  $name%-32s compiled (${rendered.size} class(es))")
             true
           }
 
@@ -205,25 +228,41 @@ object FixturesCheck {
     }
   }
 
-  private def isFixtureClass(path: String): Boolean = {
-    val userPrefixes = List(
-      "Anon$", "DemoBox/", "Person/", "Describable/", "Wrapper$", "Clo$liftedClosures$",
-      "Def$describeShape$", "Def$roundTrip$", "Def$greet$", "Eq/Def$eq$", "Color$"
-    )
-    val userDefPrefixes = List(
-      "Def$add$", "Def$anonClassDemo$", "Def$binaryPipelineDemo$", "Def$boxDemo$", "Def$collectionsDemo$",
-      "Def$concurrencyDemo$", "Def$curriedMultiply$", "Def$datalogDemo$", "Def$describeItem$", "Def$describeShape$",
-      "Def$factorial$", "Def$genericIdentity$", "Def$getX$", "Def$higherOrderDemo$", "Def$imperativeDemo$",
-      "Def$incrementState$", "Def$javaExceptionDemo$", "Def$javaInteropDemo$", "Def$lazyAndCastsDemo$",
-      "Def$liftedClosures$", "Def$liftedClosuresDemo$", "Def$literalsDemo$", "Def$manyInstantiations$",
-      "Def$parYieldDemo$", "Def$patternMatchDemo$", "Def$pipelineDemo$", "Def$recordDemo$",
-      "Def$repeatedStdlibDemo$", "Def$runEffectDemo$", "Def$selectDemo$", "Def$shapeArea$",
-      "Def$structDemo$", "Def$tuplePatternMatch$",
-      "Clo$anonClassDemo$", "Clo$collectionsDemo$", "Clo$concurrencyDemo$", "Clo$curriedMultiply$",
-      "Clo$datalogDemo$", "Clo$higherOrderDemo$", "Clo$imperativeDemo$", "Clo$lazyAndCastsDemo$",
-      "Clo$liftedClosures$", "Clo$parYieldDemo$", "Clo$selectDemo$"
-    )
-    userPrefixes.exists(p => path.startsWith(p)) || userDefPrefixes.exists(p => path.startsWith(p))
+  // Precise, not just discriminating: for classification (see `classify` below), a prefix
+  // must reach all the way to where an id or case tag begins, not merely far enough to tell
+  // a fixture class apart from stdlib/runtime noise. "DemoBox/", "Person/", and
+  // "Describable/" alone stop at a package boundary, one def short of that -- combined with
+  // their def below into a single entry each.
+  private val Prefixes = List(
+    "Anon$", "DemoBox/Def$roundTrip$", "Person/Def$makeAndAge$", "Describable/Def$describeTwice$",
+    "Wrapper$", "Clo$liftedClosures$", "Def$describeShape$", "Def$greet$", "Eq/Def$eq$", "Color$",
+    "Def$add$", "Def$anonClassDemo$", "Def$binaryPipelineDemo$", "Def$boxDemo$", "Def$collectionsDemo$",
+    "Def$concurrencyDemo$", "Def$curriedMultiply$", "Def$datalogDemo$", "Def$describeItem$",
+    "Def$factorial$", "Def$genericIdentity$", "Def$getX$", "Def$higherOrderDemo$", "Def$imperativeDemo$",
+    "Def$incrementState$", "Def$javaExceptionDemo$", "Def$javaInteropDemo$", "Def$lazyAndCastsDemo$",
+    "Def$liftedClosures$", "Def$liftedClosuresDemo$", "Def$literalsDemo$", "Def$manyInstantiations$",
+    "Def$parYieldDemo$", "Def$patternMatchDemo$", "Def$pipelineDemo$", "Def$recordDemo$",
+    "Def$repeatedStdlibDemo$", "Def$runEffectDemo$", "Def$selectDemo$", "Def$shapeArea$",
+    "Def$structDemo$", "Def$tuplePatternMatch$",
+    "Clo$anonClassDemo$", "Clo$collectionsDemo$", "Clo$concurrencyDemo$", "Clo$curriedMultiply$",
+    "Clo$datalogDemo$", "Clo$higherOrderDemo$", "Clo$imperativeDemo$", "Clo$lazyAndCastsDemo$",
+    "Clo$parYieldDemo$", "Clo$selectDemo$"
+  )
+
+  private def matchedPrefix(path: String): Option[String] = Prefixes.find(path.startsWith)
+
+  // The id (if any) is whatever run of lowercase-base-36 characters immediately follows the
+  // matched prefix -- a case tag or further literal name segment always starts with an
+  // uppercase letter by Flix's own naming convention, so it naturally stops the run rather
+  // than needing a length heuristic to tell the two apart. Exact, not a shape guess: this
+  // tool knows precisely which literal text precedes an id, unlike a blind stdlib-scale
+  // census that has to infer it (see scripts/class-id-report.scala's Ids.isPlausibleId).
+  private def classify(path: String, prefix: String): String = {
+    val rest = path.stripPrefix(prefix).stripSuffix(".class")
+    val idRun = rest.takeWhile(c => c.isDigit || (c >= 'a' && c <= 'z'))
+    if (idRun.isEmpty) "none"
+    else if (idRun.forall(_.isDigit) && idRun.length < 8) "counter"
+    else "hash"
   }
 
   private def printErrors(errors: List[_]): Unit = {
