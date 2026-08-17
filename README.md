@@ -43,7 +43,13 @@ The workflow, carried over from the exploration on the
    source file, once unmodified and once per perturbation (a comment, a
    renamed variable, an added specialization, …), and reports what fraction
    of generated class names and bytes survive each edit.
-4. Comparing that census across recompiles — with and without unrelated
+4. **`scripts/collision-stress`** — generates enough distinct specializations
+   of one generic def to make a name collision likely at a given
+   `--Xstable-name-length` width, compiles them for real, and reports
+   whether the compiler's collision guard caught it or let it through
+   silently — measuring the collision policy instead of only reasoning
+   about it from the birthday bound.
+5. Comparing that census across recompiles — with and without unrelated
    source edits — is what shows whether a naming scheme is actually stable:
    a hash-derived id should reappear unchanged; a counter-derived one
    renumbers as soon as an earlier declaration shifts.
@@ -76,8 +82,9 @@ it outside the repository, and runs it. Later commands reuse the cache.
 ├── test/
 │   └── TestMain.flix             @Test functions covering AllConstructs.flix
 ├── scripts/
-│   ├── class-id-report(.scala|.cmd)   censuses generated symbol names in build/class
-│   └── edit-resistance(.scala|.cmd)   measures name/byte survival across perturbations
+│   ├── class-id-report(.scala|.cmd)    censuses generated symbol names in build/class
+│   ├── edit-resistance(.scala|.cmd)    measures name/byte survival across perturbations
+│   └── collision-stress(.scala|.cmd)   tries to trigger a stable-name collision for real
 ├── docs/
 │   └── adr/                      architecture decision records, e.g. the naming scheme
 ├── .flixw/
@@ -168,9 +175,8 @@ the demo lives at `src/AllConstructs.flix` (not the `hello.flix` name used
 on that branch — it isn't a hello-world, so it's named for what it actually
 is: `main`'s own banner already called it "Flix All Constructs
 Demonstration"), alongside `test/TestMain.flix` and real `flix.toml`
-metadata, and
-`scripts/class-id-report` and `scripts/edit-resistance` are in place under
-`scripts/`.
+metadata, and `scripts/class-id-report`, `scripts/edit-resistance`, and
+`scripts/collision-stress` are in place under `scripts/`.
 
 The Flix and `flixw` badges read `.flixw/lock.toml` directly, so re-pinning with
 `./flixw pin <version>` updates them without touching this file.

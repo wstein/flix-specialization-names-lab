@@ -41,14 +41,20 @@ The wrapper adds verbs of its own, ahead of the compiler's:
   directly: `class-id-report` censuses generated symbol names in an
   already-built `build/class` directory or jar; `edit-resistance` recompiles
   a source file in-process, once clean and once per perturbation, and
-  reports what fraction of generated names and bytes survive each edit.
-  Neither goes through `flixw`: `class-id-report` never needs a compiler at
-  all, and `edit-resistance` needs to compile against whichever jar it is
-  pointed at (`--flix-jar`, `$FLIX_JAR`, `./flix.jar`, or `flix` on `$PATH`)
-  to compare arbitrary builds, not just the one `flixw` has pinned. Either
-  way, `edit-resistance.scala` alone has no classpath and is not directly
-  executable -- `scala-cli`'s `using jar` directive is a static literal, so
-  the wrapper has to hand it a resolved jar via `--jar`
+  reports what fraction of generated names and bytes survive each edit;
+  `collision-stress` generates enough distinct specializations of one
+  generic def to make a stable-name collision likely at a given
+  `--Xstable-name-length` width, compiles them for real, and reports
+  whether the compiler's collision guard caught it. `class-id-report`
+  never needs a compiler at all; `edit-resistance` and `collision-stress`
+  both compile against whichever jar they are pointed at (`--flix-jar`,
+  `$FLIX_JAR`, `./flix.jar`, or `flix` on `$PATH`), deliberately never
+  through `flixw`, since comparing or stress-testing arbitrary builds is
+  the point and `flixw` holds only one pinned jar at a time. Either way,
+  the `.scala` files that compile in-process have no classpath on their
+  own and are not directly executable -- `scala-cli`'s `using jar`
+  directive is a static literal, so the wrapper has to hand each one a
+  resolved jar via `--jar`
 - `.github/workflows/` — `build-and-test.yaml` on three platforms,
   `update-flix.yaml` weekly, `docs.yaml` for the API documentation. All three
   drive the wrapper; none of them install Flix

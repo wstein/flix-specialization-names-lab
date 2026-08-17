@@ -142,9 +142,11 @@ in exchange for not having a platform-specific failure mode.
 
 ### `--Xstable-name-length`: a configurable, narrower suffix
 
-13 characters is the default, not the only width: `--Xstable-name-length`
-selects a narrower suffix, and the wiring for it is now confirmed against a
-real corpus rather than just unit-tested. Built at `../flix-stable-naming-lab`
+13 characters, fixed, was the original design this ADR opened with. It no
+longer is: `--Xstable-name-length` makes the width configurable, and its
+own default (`StableName.DefaultWidth`) is now 12, one narrower than that
+original fixed value. The wiring for the flag is confirmed against a real
+corpus rather than just unit-tested. Built at `../flix-stable-naming-lab`
 and compiled at widths 4, 8, and 12:
 
 | Class | width=4 | width=8 | width=12 |
@@ -166,12 +168,30 @@ fewer base-36 characters a rendered class name ends in, the more distinct
 specializations can share that literal name by chance, independent of how
 many distinct 64-bit ids the compiler actually minted. The birthday-bound
 math in Collision policy below is computed for the full-width default and
-does not carry over unchanged to a narrowed rendering — whether the
-full-symbol collision guard described there still catches two different
-ids that happen to truncate to the same short name is not established
-here. `--Xstable-name-length` is an escape hatch for builds that want
-smaller names and can accept that open question, not a replacement for
-the 13-character default.
+does not carry over unchanged to a narrowed rendering.
+
+That used to be an open question rather than a measured one; it no longer
+is. `scripts/collision-stress` generates enough distinct specializations
+of one generic def to make a collision likely at a given width (the
+birthday bound again, run backwards: at width 2, `1296` possible suffixes,
+134 specializations already crosses 99.9%) and compiles them for real.
+Run at width 2 with the default specialization count, it reproduced one:
+
+```
+Specialization name collision on 'collisionStressProbe$si' from key
+'collisionStressProbe|((((Arrow(3) Pure) Enum(M34)) Str) Str)':
+'collisionStressProbe' at 'M119 -> (String -> String)' and
+'collisionStressProbe' at 'M34 -> (String -> String)'.
+```
+
+thrown as `ca.uwaterloo.flix.util.InternalCompilerException` from
+`CollisionRegistry.claim`, not returned as a graceful compile error and
+not a silent overwrite — exactly what the full-symbol collision guard in
+Collision policy below claims happens, now confirmed at a narrowed width
+rather than only reasoned about at the default one. `--Xstable-name-length`
+is still an escape hatch for builds that want smaller names and a smaller
+margin, not a replacement for the 12-character default — but "does the
+guard catch a truncated collision" is answered, not open.
 
 ### Collision policy
 
