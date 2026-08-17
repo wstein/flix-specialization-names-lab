@@ -50,16 +50,21 @@ The workflow, carried over from the exploration on the
    IDE services keyed on the same symbols) even when its declarations are
    indistinguishable by content alone.
 6. **`fixtures/`** — small, focused, hand-written programs, one claim per
-   file, checked by `scripts/fixtures-check`: `pass/` has one minimal
-   example per id-minting family (isolated from `AllConstructs.flix`'s
-   kitchen-sink shape so each is independently bisectable), `fail/`
-   has duplicate-declaration patterns `duplicate-decl-stress` does not
-   parametrically reach (enum, struct, trait, instance), each constructed
-   so name *and* content collide, not just name. `scripts/fixtures-build`
-   is the disk-writing counterpart: it compiles every file under
-   `fixtures/pass/` for real and writes each one's generated classes
-   to its own subdirectory of `build/fixtures/`, so `scripts/class-id-report`
-   can census a single fixture in isolation.
+   file, verified by `scripts/fixtures-check`:
+   - `pass/` (7 minimal fixtures) covers each id-minting family in isolation
+     (specialized defs, struct specialization, enum cases, lifted lambdas,
+     anonymous classes, instance member defs, derived instance defs), each accompanied
+     by a golden `.out` runtime output snapshot and a `.names` stable symbol snapshot.
+   - `fail/` (6 negative fixtures) covers duplicate-declaration patterns
+     `duplicate-decl-stress` does not parametrically reach (enum, struct, trait,
+     instance, instance def, and trait derivation), each accompanied by a golden
+     `.expect` compiler diagnostics snapshot.
+   - `scripts/fixtures-build` is the disk-writing counterpart: it compiles every file under
+     `fixtures/pass/` for real and writes each one's generated classes
+     to its own subdirectory of `build/fixtures/`, so `scripts/class-id-report`
+     can census a single fixture in isolation.
+   - All golden snapshots (`.names`, `.expect`) can be automatically checked or updated
+     via `./scripts/fixtures-check` (or `./scripts/fixtures-check -u` to update snapshots).
 7. Comparing that census across recompiles — with and without unrelated
    source edits — is what shows whether a naming scheme is actually stable:
    a hash-derived id should reappear unchanged; a counter-derived one
@@ -71,17 +76,19 @@ The workflow, carried over from the exploration on the
 ├── src/
 │   └── AllConstructs.flix        the id-bearing-symbol demo; see "What the lab measures"
 ├── test/
-│   └── TestMain.flix             @Test functions covering AllConstructs.flix
+│   ├── TestMain.flix             @Test functions covering AllConstructs.flix
+│   ├── AllConstructs.out         expected runtime output snapshot for AllConstructs.flix
+│   └── AllConstructs.names       golden baseline of user-code stable class names
 ├── scripts/
 │   ├── class-id-report(.scala|.cmd)         censuses generated symbol names in build/class
 │   ├── edit-resistance(.scala|.cmd)         measures name/byte survival across perturbations
 │   ├── collision-stress(.scala|.cmd)        tries to trigger a stable-name collision for real
 │   ├── duplicate-decl-stress(.scala|.cmd)   checks identical duplicate decls stay diagnosable
-│   ├── fixtures-check(.scala|.cmd)          verifies every file under fixtures/
+│   ├── fixtures-check(.scala|.cmd)          verifies all fixtures against golden snapshots
 │   └── fixtures-build(.scala|.cmd)          builds fixtures/pass/ to build/fixtures/
 ├── fixtures/
-│   ├── pass/                     one minimal, focused example per id-minting family
-│   └── fail/                     duplicate-decl patterns not stress-tested elsewhere
+│   ├── pass/                     minimal focused examples per id-minting family (.out, .names)
+│   └── fail/                     duplicate-decl negative fixtures (.expect)
 ├── docs/
 │   └── adr/                      architecture decision records, e.g. the naming scheme
 ├── .flixw/
