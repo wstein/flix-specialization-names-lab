@@ -54,7 +54,7 @@ shift
 goto parse
 
 :usage
-echo Usage: scripts\fixtures-build.cmd [--flix-jar path\to\flix.jar] [--compiler-version string] [--out dir]
+echo Usage: scripts\fixtures-build.cmd [--flix-jar path\to\flix.jar] [--compiler-version string] [--out dir] [--stable-width n]
 echo(
 echo Compiles every file under fixtures\pass\ for real and writes each one's generated
 echo classes to its own subdirectory of build\fixtures\ (or --out^), so scripts\class-id-report
@@ -70,6 +70,8 @@ echo                             directly (java -jar ... --version^) and
 echo                             appends a short digest of its own bytes.
 echo   --out ^<dir^>              Where to write classes. Default: build\fixtures,
 echo                             wiped before every run.
+echo   --stable-width ^<n^>       Override --Xstable-name-length for this build.
+echo                             Left unset, the compiler's own default applies.
 echo   -h, --help                Show this help and exit.
 echo(
 echo Jar resolution when --flix-jar is not given, first match wins. This never

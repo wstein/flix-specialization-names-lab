@@ -31,7 +31,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/fixtures-build [--flix-jar path/to/flix.jar] [--compiler-version string] [--out dir]
+Usage: ./scripts/fixtures-build [--flix-jar path/to/flix.jar] [--compiler-version string] [--out dir] [--stable-width n]
 
 Compiles every file under fixtures/pass/ for real and writes each one's generated
 classes to its own subdirectory of build/fixtures/ (or --out), so scripts/class-id-report
@@ -49,6 +49,8 @@ Options:
                             every byte.
   --out <dir>               Where to write classes. Default: build/fixtures,
                              wiped before every run.
+  --stable-width <n>        Override --Xstable-name-length for this build.
+                             Left unset, the compiler's own default applies.
   -h, --help                Show this help and exit.
 
 Jar resolution when --flix-jar is not given, first match wins. This never

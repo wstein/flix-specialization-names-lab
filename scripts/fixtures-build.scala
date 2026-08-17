@@ -43,8 +43,16 @@ import scala.jdk.CollectionConverters._
   * {{{
   *   ./scripts/fixtures-build
   *   ./scripts/fixtures-build --flix-jar path/to/flix.jar
+  *   ./scripts/fixtures-build --stable-width 0
   *   ./scripts/class-id-report build/fixtures/enum-case
   * }}}
+  *
+  * `--stable-width` overrides `--Xstable-name-length` for this build, the same knob
+  * `scripts/collision-stress` exposes. Left unset, the compiler's own default applies.
+  * Pass 0 to check whether every id-minting family actually falls back to classic
+  * incrementing ids the way `--Xstable-name-length 0` documents itself as doing --
+  * a family that mints via `SymId.Hash(StableName.suffix(key))` directly instead of
+  * `Symbol.stableOrCounterId` bypasses the flag and keeps emitting content-addressed ids.
   *
   * `scripts/fixtures-build` resolves a Flix compiler jar the same way the other lab scripts
   * do -- from `--flix-jar`, `$FLIX_JAR`, `./flix.jar`, or `flix` on `$PATH`, never through
@@ -53,7 +61,7 @@ import scala.jdk.CollectionConverters._
   */
 object FixturesBuild {
 
-  private case class Config(compilerVersion: Option[String], out: Option[String])
+  private case class Config(compilerVersion: Option[String], out: Option[String], stableWidth: Option[Int])
 
   def main(args: Array[String]): Unit = {
     val config = parseArgs(args.toList)
@@ -80,7 +88,7 @@ object FixturesBuild {
       .sortBy(_.getFileName.toString)
 
     println(s"pass (${files.size} fixture(s)):")
-    val results = files.map(f => build(f, outDir))
+    val results = files.map(f => build(f, outDir, config.stableWidth))
 
     println()
     val failures = results.count(!_)
@@ -93,14 +101,15 @@ object FixturesBuild {
     }
   }
 
-  private def build(file: Path, outDir: Path): Boolean = {
+  private def build(file: Path, outDir: Path, stableWidth: Option[Int]): Boolean = {
     val name = file.getFileName.toString
     val stem = name.stripSuffix(".flix")
     val source = new String(Files.readAllBytes(file), java.nio.charset.StandardCharsets.UTF_8)
 
     implicit val sctx: SecurityContext = SecurityContext.Unrestricted
     val flix = new Flix()
-    flix.setOptions(Options.Default.copy(progress = false, incremental = false, threads = 1))
+    val base = Options.Default.copy(progress = false, incremental = false, threads = 1)
+    flix.setOptions(stableWidth.fold(base)(w => base.copy(xstableNameLength = w)))
     flix.addVirtualPath(CompilerConstants.VirtualTestFile, source)
 
     try {
@@ -134,15 +143,22 @@ object FixturesBuild {
   private def parseArgs(args: List[String]): Config = {
     var compilerVersion: Option[String] = None
     var out: Option[String] = None
+    var stableWidth: Option[Int] = None
     var remaining = args
     while (remaining.nonEmpty) remaining match {
       case "--compiler-version" :: value :: tail => compilerVersion = Some(value); remaining = tail
       case "--out" :: value :: tail => out = Some(value); remaining = tail
+      case "--stable-width" :: value :: tail =>
+        stableWidth = Some(value.toIntOption.getOrElse {
+          Console.err.println(s"--stable-width expects an integer, got: $value")
+          sys.exit(2)
+        })
+        remaining = tail
       case other :: _ =>
         Console.err.println(s"unrecognized argument: $other")
         sys.exit(2)
       case Nil => ()
     }
-    Config(compilerVersion, out)
+    Config(compilerVersion, out, stableWidth)
   }
 }

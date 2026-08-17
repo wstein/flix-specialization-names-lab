@@ -62,7 +62,9 @@ The workflow, carried over from the exploration on the
    - `scripts/fixtures-build` is the disk-writing counterpart: it compiles every file under
      `fixtures/pass/` for real and writes each one's generated classes
      to its own subdirectory of `build/fixtures/`, so `scripts/class-id-report`
-     can census a single fixture in isolation.
+     can census a single fixture in isolation. `--stable-width n` overrides
+     `--Xstable-name-length` for the build, which is how the ADR's
+     `--Xstable-name-length 0` fallback measurement was produced.
    - All golden snapshots (`.names`, `.expect`) can be automatically checked or updated
      via `./scripts/fixtures-check` (or `./scripts/fixtures-check -u` to update snapshots).
 7. Comparing that census across recompiles — with and without unrelated
