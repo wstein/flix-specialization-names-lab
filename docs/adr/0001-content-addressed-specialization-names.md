@@ -33,7 +33,7 @@ is being specialized, not of compilation order, so it is stable across
 recompiles and changes only when the thing it names actually changes.
 
 This lab exists to validate that decision independently of the compiler
-fork: `src/Main.flix` is a demo written to exercise every id-bearing symbol
+fork: `src/AllConstructs.flix` is a demo written to exercise every id-bearing symbol
 kind the compiler can mint, and `scripts/class-id-report` censuses the
 generated `.class` files after the fact, without invoking the compiler, to
 tell counter-derived ids apart from hash-derived ones and measure how many
@@ -72,7 +72,7 @@ each one from its key instead. Commits, in landing order: `17816c4965`
 lambdas/closures), `90fb695bfb` (enums and structs, via the new
 `ErasureKey`).
 
-This lab now exercises all five: `src/Main.flix`'s specialization-coverage
+This lab now exercises all five: `src/AllConstructs.flix`'s specialization-coverage
 section (`describeShape`/`manyInstantiations` for defs, `liftedClosures`
 for closures, `DemoBox` for structs, `anonClassDemo` for anonymous classes,
 and the enum literals throughout for enum cases), censused by

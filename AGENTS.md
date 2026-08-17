@@ -27,7 +27,7 @@ The wrapper adds verbs of its own, ahead of the compiler's:
 
 ## Layout
 
-- `src/` — sources; `src/Main.flix` holds `main`
+- `src/` — sources; `src/AllConstructs.flix` holds `main`
 - `test/` — `@Test` functions
 - `flix.toml` — package metadata, dependencies, and the *lowest* Flix version
   this project accepts

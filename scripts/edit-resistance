@@ -32,7 +32,7 @@ Usage: ./scripts/edit-resistance [--flix-jar path/to/flix.jar] [source.flix]
                                   [--compiler-version string]
 
 Measures how many generated class names, and how many generated classes,
-survive a set of edits to source.flix (default: src/Main.flix).
+survive a set of edits to source.flix (default: src/AllConstructs.flix).
 
 Options:
   --flix-jar <path>        Flix compiler jar to compile against. Overrides
@@ -125,7 +125,7 @@ fi
 # edit-resistance.scala's relative default -- which would otherwise resolve
 # against the caller's cwd now that this never `cd`s.
 if [ ${#args[@]} -eq 0 ]; then
-  args+=("$root/src/Main.flix")
+  args+=("$root/src/AllConstructs.flix")
 fi
 
 # Labeling the report: an explicit --compiler-version always wins. Otherwise this asks the

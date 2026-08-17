@@ -27,7 +27,7 @@ the same source.
 The workflow, carried over from the exploration on the
 `flix-specialization-names-lab` branch of the compiler fork, is:
 
-1. **`src/Main.flix`** — a demo deliberately written to touch every
+1. **`src/AllConstructs.flix`** — a demo deliberately written to touch every
    id-bearing symbol kind the compiler can mint: specialized defs, lifted
    lambdas, a polymorphic struct instantiated at many types, an anonymous
    Java class, and a def called at a dozen distinct type arguments. The goal
@@ -72,9 +72,9 @@ it outside the repository, and runs it. Later commands reuse the cache.
 ```
 .
 ├── src/
-│   └── Main.flix                 the id-bearing-symbol demo; see "What the lab measures"
+│   └── AllConstructs.flix        the id-bearing-symbol demo; see "What the lab measures"
 ├── test/
-│   └── TestMain.flix             @Test functions covering Main.flix
+│   └── TestMain.flix             @Test functions covering AllConstructs.flix
 ├── scripts/
 │   ├── class-id-report(.scala|.cmd)   censuses generated symbol names in build/class
 │   └── edit-resistance(.scala|.cmd)   measures name/byte survival across perturbations
@@ -164,8 +164,11 @@ warns rather than failing, so a fresh copy of this template does not start red.
 
 This repository was scaffolded from `flix-template`. The lab content from the
 `flix-specialization-names-lab` branch of the compiler fork has been ported in:
-the demo lives at `src/Main.flix` (not the `hello.flix` name used on that
-branch), alongside `test/TestMain.flix` and real `flix.toml` metadata, and
+the demo lives at `src/AllConstructs.flix` (not the `hello.flix` name used
+on that branch — it isn't a hello-world, so it's named for what it actually
+is: `main`'s own banner already called it "Flix All Constructs
+Demonstration"), alongside `test/TestMain.flix` and real `flix.toml`
+metadata, and
 `scripts/class-id-report` and `scripts/edit-resistance` are in place under
 `scripts/`.
 

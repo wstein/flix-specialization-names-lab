@@ -79,7 +79,7 @@ object EditResistance {
   /**
     * The default program to measure.
     */
-  private val DefaultSource: Path = Paths.get("src/Main.flix")
+  private val DefaultSource: Path = Paths.get("src/AllConstructs.flix")
 
   def main(args: Array[String]): Unit = {
     val (compilerVersion, positional) = parseArgs(args.toList)

@@ -65,7 +65,7 @@ echo Usage: scripts\edit-resistance.cmd [--flix-jar path\to\flix.jar] [source.fl
 echo                                    [--compiler-version string]
 echo(
 echo Measures how many generated class names, and how many generated classes,
-echo survive a set of edits to source.flix (default: src\Main.flix^).
+echo survive a set of edits to source.flix (default: src\AllConstructs.flix^).
 echo(
 echo Options:
 echo   --flix-jar ^<path^>        Flix compiler jar to compile against.
@@ -118,7 +118,7 @@ rem No positional source.flix was given: fall back to this lab's own demo file
 rem explicitly, rather than leaving it to edit-resistance.scala's relative
 rem default -- which would otherwise resolve against the caller's cwd now
 rem that this never `cd`s.
-if "%ARGS%"=="" set ARGS= "%~dp0..\src\Main.flix"
+if "%ARGS%"=="" set ARGS= "%~dp0..\src\AllConstructs.flix"
 
 rem Labeling the report: an explicit --compiler-version always wins. Otherwise this asks the
 rem jar itself (java -jar ... --version) rather than parsing its cache filename -- that
