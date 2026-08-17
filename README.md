@@ -65,11 +65,13 @@ The workflow, carried over from the exploration on the
      specialized defs, lifted lambdas, anonymous classes, and enum-case
      specializations. A class with no id at all (e.g. an unspecialized enum case
      tag) is left out of that second half, since the source-level `case`/`field`
-     entry already records it; listing both would just be duplication. Checked on
-     every run, not just when `-u` regenerates it: a fixture whose id-minting
-     family has ever shown a content-addressed id failing to do so on a later run
-     is a hard failure, so a regression can't get silently re-baked into a golden
-     file by an incautious `-u`.
+     entry already records it; listing both would just be duplication. A sibling
+     `.hashes` file is just the raw id strings out of `.sym`, one per line,
+     sorted and deduplicated — for diffing the ids alone, without the qualified
+     names around them. Checked on every run, not just when `-u` regenerates it:
+     a fixture whose id-minting family has ever shown a content-addressed id
+     failing to do so on a later run is a hard failure, so a regression can't
+     get silently re-baked into a golden file by an incautious `-u`.
    - `fail/` (6 negative fixtures) covers duplicate-declaration patterns
      `duplicate-decl-stress` does not parametrically reach (enum, struct, trait,
      instance, instance def, and trait derivation), each accompanied by a golden
@@ -80,7 +82,7 @@ The workflow, carried over from the exploration on the
      can census a single fixture in isolation. `--stable-width n` overrides
      `--Xstable-name-length` for the build, which is how the ADR's
      `--Xstable-name-length 0` fallback measurement was produced.
-   - All golden snapshots (`.sym`, `.expect`) can be automatically checked or updated
+   - All golden snapshots (`.sym`, `.hashes`, `.expect`) can be automatically checked or updated
      via `./scripts/fixtures-check` (or `./scripts/fixtures-check -u` to update snapshots).
 7. Comparing that census across recompiles — with and without unrelated
    source edits — is what shows whether a naming scheme is actually stable:
@@ -95,7 +97,8 @@ The workflow, carried over from the exploration on the
 ├── test/
 │   ├── TestMain.flix             @Test functions covering AllConstructs.flix
 │   ├── AllConstructs.out         expected runtime output snapshot for AllConstructs.flix
-│   └── AllConstructs.sym         golden baseline of user-code non-stdlib symbols
+│   ├── AllConstructs.sym         golden baseline of user-code non-stdlib symbols
+│   └── AllConstructs.hashes      golden baseline of the id strings alone, out of .sym
 ├── scripts/
 │   ├── class-id-report(.scala|.cmd)         censuses generated symbol names in build/class
 │   ├── edit-resistance(.scala|.cmd)         measures name/byte survival across perturbations
@@ -104,7 +107,7 @@ The workflow, carried over from the exploration on the
 │   ├── fixtures-check(.scala|.cmd)          verifies all fixtures against golden snapshots
 │   └── fixtures-build(.scala|.cmd)          builds fixtures/pass/ to build/fixtures/
 ├── fixtures/
-│   ├── pass/                     minimal focused examples per id-minting family (.out, .sym)
+│   ├── pass/                     minimal focused examples per id-minting family (.out, .sym, .hashes)
 │   └── fail/                     duplicate-decl negative fixtures (.expect)
 ├── docs/
 │   └── adr/                      architecture decision records, e.g. the naming scheme

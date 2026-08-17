@@ -77,7 +77,8 @@ object FixturesCheck {
     val allConstructsResult = if (Files.exists(allConstructsFile)) {
       println(s"src (integration demo):")
       val symFile = root.resolve("test/AllConstructs.sym")
-      List(checkSingle(allConstructsFile, symFileOpt = Some(symFile), expectSuccess = true, isStable, config))
+      val hashesFile = root.resolve("test/AllConstructs.hashes")
+      List(checkSingle(allConstructsFile, symFileOpt = Some(symFile), hashesFileOpt = Some(hashesFile), expectSuccess = true, isStable, config))
     } else Nil
 
     val allResults = passResults ++ failResults ++ allConstructsResult
@@ -114,10 +115,10 @@ object FixturesCheck {
   }
 
   private def check(file: Path, expectSuccess: Boolean, isStable: Boolean, config: Config): Boolean = {
-    checkSingle(file, symFileOpt = None, expectSuccess, isStable, config)
+    checkSingle(file, symFileOpt = None, hashesFileOpt = None, expectSuccess, isStable, config)
   }
 
-  private def checkSingle(file: Path, symFileOpt: Option[Path], expectSuccess: Boolean, isStable: Boolean, config: Config): Boolean = {
+  private def checkSingle(file: Path, symFileOpt: Option[Path], hashesFileOpt: Option[Path], expectSuccess: Boolean, isStable: Boolean, config: Config): Boolean = {
     val name = file.getFileName.toString
     val stem = name.stripSuffix(".flix")
     val source = new String(Files.readAllBytes(file), java.nio.charset.StandardCharsets.UTF_8)
@@ -149,23 +150,30 @@ object FixturesCheck {
           // ids, which only exist post-codegen.
           val (rootOpt, _) = newFlix().check()
           val sourceEntries = rootOpt.map(sourceSymbols).getOrElse(Nil)
-          val sourceCounters = rootOpt.map(sourceIdRegressions).getOrElse(Nil)
+          val instanceDefIds = rootOpt.map(sourceInstanceDefIds).getOrElse(Nil)
+          val sourceCounters = instanceDefIds.filter(_.isCounter).map(_.qualified)
+          val sourceHashes = instanceDefIds.filterNot(_.isCounter).map(_.id)
 
           val classEntries = result.getClasses.keys.flatMap { jvmName =>
             val path = (jvmName.pkg :+ s"${jvmName.name}.class").mkString("/")
-            matchedPrefix(path).map(prefix => path -> classify(path, prefix))
+            matchedPrefix(path).map { prefix =>
+              val (kind, id) = classify(path, prefix)
+              (path, kind, id)
+            }
           }.toList
-          val classCounters = classEntries.collect { case (path, "counter") => path }
+          val classCounters = classEntries.collect { case (path, "counter", _) => path }
+          val classHashes = classEntries.collect { case (_, "hash", id) => id }
           // "none" (no id at all, e.g. an unspecialized enum case tag) is dropped here: the
           // source-level `case`/`field` entry above already records that the symbol exists,
           // so a bytecode entry with nothing else to add is pure duplication.
-          val classLines = classEntries.collect { case (path, k) if k != "none" => s"class $path" }
+          val classLines = classEntries.collect { case (path, k, _) if k != "none" => s"class $path" }
 
-          val rendered = (sourceEntries ++ classLines).sorted
+          val renderedSym = (sourceEntries ++ classLines).sorted
+          val renderedHashes = (sourceHashes ++ classHashes).distinct.sorted
           val counters = sourceCounters ++ classCounters
 
           val symFile = symFileOpt.getOrElse(file.getParent.resolve(s"$stem.sym"))
-          val symFileName = symFile.getFileName.toString
+          val hashesFile = hashesFileOpt.getOrElse(file.getParent.resolve(s"$stem.hashes"))
 
           // `isStable` alone cannot gate this: `java -jar ... --version` never echoes the
           // "+stable.names.N" build metadata that lives only in .flixw/lock.toml, so it is
@@ -175,7 +183,7 @@ object FixturesCheck {
           // signal: once a fixture has demonstrated it mints a content-addressed id, that id
           // going away is a regression to fail on, not license to fall back to "stock
           // compiler, skip".
-          val hasHash = classEntries.exists(_._2 == "hash") || sourceEntries.exists(_.contains("$"))
+          val hasHash = renderedHashes.nonEmpty
           val hadStableSnapshot = Files.exists(symFile) &&
             new String(Files.readAllBytes(symFile), java.nio.charset.StandardCharsets.UTF_8).linesIterator.exists(_.contains("$"))
           val hasStableNames = isStable || hasHash || hadStableSnapshot
@@ -189,26 +197,37 @@ object FixturesCheck {
           if (hasStableNames && counters.nonEmpty) {
             println(f"  FAIL  $name%-32s minted a counter-shaped id where a content-addressed hash was expected: ${counters.mkString(", ")}")
             false
-          } else if (config.updateSnapshots && hasStableNames) {
-            Files.write(symFile, (rendered.mkString("\n") + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
-            println(f"  PASS  $name%-32s compiled, updated $symFileName (${rendered.size} symbol(s))")
-            true
-          } else if (hasStableNames && Files.exists(symFile)) {
-            val expected = new String(Files.readAllBytes(symFile), java.nio.charset.StandardCharsets.UTF_8).trim.linesIterator.toList.filter(_.nonEmpty)
-            if (rendered == expected) {
-              println(f"  PASS  $name%-32s compiled, matched $symFileName (${rendered.size} symbol(s))")
-              true
-            } else {
-              println(f"  FAIL  $name%-32s symbols do not match $symFileName")
-              println(s"        expected: $expected")
-              println(s"        actual:   $rendered")
-              false
-            }
           } else if (!hasStableNames) {
             println(f"  PASS  $name%-32s compiled (stable.names check skipped on stock compiler)")
             true
+          } else if (config.updateSnapshots) {
+            Files.write(symFile, (renderedSym.mkString("\n") + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+            Files.write(hashesFile, (renderedHashes.mkString("\n") + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+            println(f"  PASS  $name%-32s compiled, updated ${symFile.getFileName} and ${hashesFile.getFileName} (${renderedSym.size} symbol(s), ${renderedHashes.size} hash(es))")
+            true
+          } else if (Files.exists(symFile) && Files.exists(hashesFile)) {
+            val expectedSym = new String(Files.readAllBytes(symFile), java.nio.charset.StandardCharsets.UTF_8).trim.linesIterator.toList.filter(_.nonEmpty)
+            val expectedHashes = new String(Files.readAllBytes(hashesFile), java.nio.charset.StandardCharsets.UTF_8).trim.linesIterator.toList.filter(_.nonEmpty)
+            if (renderedSym == expectedSym && renderedHashes == expectedHashes) {
+              println(f"  PASS  $name%-32s compiled, matched ${symFile.getFileName} and ${hashesFile.getFileName} (${renderedSym.size} symbol(s), ${renderedHashes.size} hash(es))")
+              true
+            } else {
+              println(f"  FAIL  $name%-32s golden file(s) do not match")
+              if (renderedSym != expectedSym) {
+                println(s"        ${symFile.getFileName} expected: $expectedSym")
+                println(s"        ${symFile.getFileName} actual:   $renderedSym")
+              }
+              if (renderedHashes != expectedHashes) {
+                println(s"        ${hashesFile.getFileName} expected: $expectedHashes")
+                println(s"        ${hashesFile.getFileName} actual:   $renderedHashes")
+              }
+              false
+            }
+          } else if (Files.exists(symFile) || Files.exists(hashesFile)) {
+            println(f"  FAIL  $name%-32s only one of ${symFile.getFileName}/${hashesFile.getFileName} exists -- run with -u to create the other")
+            false
           } else {
-            println(f"  PASS  $name%-32s compiled (${rendered.size} symbol(s))")
+            println(f"  PASS  $name%-32s compiled (${renderedSym.size} symbol(s), ${renderedHashes.size} hash(es))")
             true
           }
 
@@ -282,12 +301,14 @@ object FixturesCheck {
   // than needing a length heuristic to tell the two apart. Exact, not a shape guess: this
   // tool knows precisely which literal text precedes an id, unlike a blind stdlib-scale
   // census that has to infer it (see scripts/class-id-report.scala's Ids.isPlausibleId).
-  private def classify(path: String, prefix: String): String = {
+  private def classify(path: String, prefix: String): (String, String) = {
     val rest = path.stripPrefix(prefix).stripSuffix(".class")
     val idRun = rest.takeWhile(c => c.isDigit || (c >= 'a' && c <= 'z'))
-    if (idRun.isEmpty) "none"
-    else if (idRun.forall(_.isDigit) && idRun.length < 8) "counter"
-    else "hash"
+    val kind =
+      if (idRun.isEmpty) "none"
+      else if (idRun.forall(_.isDigit) && idRun.length < 8) "counter"
+      else "hash"
+    (kind, idRun)
   }
 
   // The fixture's own source, whatever its filename, always compiles under this fixed
@@ -373,12 +394,17 @@ object FixturesCheck {
   // same failure: it exists for a distinct, still-plausible regression -- Namer or Deriver
   // itself minting a non-content-addressed id at the AST level -- that a bytecode-only
   // check could miss if it ever happened to render into a fixed-width-looking string.
-  private def sourceIdRegressions(root: TypedAst.Root): List[String] = {
+  private case class InstanceDefId(qualified: String, id: String, isCounter: Boolean)
+
+  private def sourceInstanceDefIds(root: TypedAst.Root): List[InstanceDefId] = {
     root.instances.values.filter(i => isUserCode(i.loc)).flatMap(_.defs).filter(d => isUserCode(d.loc))
       .flatMap { d =>
-        val qualified = qualify(d.sym.namespace, d.sym.name)
-        val suffix = d.sym.name.substring(d.sym.name.lastIndexOf('$') + 1)
-        if (d.sym.name.contains("$") && suffix.forall(_.isDigit) && suffix.length < 8) Some(qualified) else None
+        val idx = d.sym.name.lastIndexOf('$')
+        if (idx < 0) None
+        else {
+          val id = d.sym.name.substring(idx + 1)
+          Some(InstanceDefId(qualify(d.sym.namespace, d.sym.name), id, id.forall(_.isDigit) && id.length < 8))
+        }
       }.toList
   }
 

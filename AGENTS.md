@@ -71,7 +71,29 @@ The wrapper adds verbs of its own, ahead of the compiler's:
   shape so each is independently bisectable; `fail/` holds
   duplicate-declaration patterns (enum, struct, trait, instance, derivation) that
   `duplicate-decl-stress` does not parametrically reach, each constructed
-  so name *and* content collide, not just name
+  so name *and* content collide, not just name. Each `pass/` fixture carries
+  a golden `.sym` and `.hashes`, both checked or updated (`-u`) by
+  `fixtures-check` alongside the `.out` runtime snapshot:
+  - `.sym` is one `<kind> <qualified name>` line per non-stdlib symbol the
+    fixture declares -- `mod`, `trait`, `sig`, `fun`, `var` (a formal
+    parameter), `enum`, `case`, `struct`, `field`, `instance`,
+    `instance-def`, `effect`, `op`, `alias` -- not just the ones that
+    happen to mint a generated id. Sourced from two merged views:
+    `flix.check()`'s pre-specialization `TypedAst.Root` for everything
+    above (instance members and derived instance defs already carry their
+    id as part of the symbol's own name at this point, e.g.
+    `toString$awemhsldalu5`), plus `flix.compile()`'s generated classes
+    (`class <path>`) for the four families whose ids don't exist until
+    codegen -- specialized defs, lifted lambdas, anonymous classes,
+    enum-case specializations -- and only the id-bearing ones; a class
+    with no id at all is dropped as duplicate of the source-level
+    `case`/`field` entry that already records it.
+  - `.hashes` is just the raw id strings from `.sym`, one per line, sorted
+    and deduplicated -- for a quick diff of the ids alone, without the
+    surrounding qualified names.
+  - A counter-shaped id where a hash was expected is a hard failure on
+    every run, not just when `-u` regenerates the snapshot, so a naming
+    regression can't get silently re-baked into a golden file.
 - `.github/workflows/` — `build-and-test.yaml` on three platforms,
   `update-flix.yaml` weekly, `docs.yaml` for the API documentation. All three
   drive the wrapper; none of them install Flix
