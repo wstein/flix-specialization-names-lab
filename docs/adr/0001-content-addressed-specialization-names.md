@@ -43,7 +43,20 @@ of each survive an unrelated edit.
 
 A generated JVM name can carry a `$id` from five distinct sites in the
 compiler, each landed as its own commit against the fork
-(`wstein/flix-fork`, tag `v0.75.3+stable.names.1`) and now content-addressed:
+(`wstein/flix-fork`, tag `v0.75.3+stable.names.1`). None depends on a
+global counter any more, but not all five are stable for the same reason,
+and only three are actually content-addressed in the sense of hashing a
+description of what the thing *is*: a specialized def's key is its
+originating symbol plus its instantiated type; an enum or struct's key is
+its symbol plus its erased type arguments. Lifted lambdas and anonymous
+classes have no content of their own to hash at all — a lambda's key is
+`<enclosing symbol>#lift<index>`, an index counted within its enclosing
+definition, not a rendering of the lambda's own body or behavior; same
+shape for `<enclosing>#anon<index>` on an anonymous class. Both are stable
+because the index is deterministic and the enclosing symbol is (once that
+enclosing def is itself specialized, one of the three that *is*
+content-derived) — not because either lambda or anonymous class was
+hashed by its own content.
 
 | Family | Symbol kind | Phase | Canonical key |
 | --- | --- | --- | --- |
