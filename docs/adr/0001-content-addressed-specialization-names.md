@@ -219,6 +219,26 @@ is still an escape hatch for builds that want smaller names and a smaller
 margin, not a replacement for the 12-character default — but "does the
 guard catch a truncated collision" is answered, not open.
 
+The instance-member (`Namer`) and derived-instance (`Deriver`) families mint
+their ids at a different call site than the rest of the table above —
+`SymId.Hash(StableName.suffix(key))` directly, rather than through
+`Symbol.stableOrCounterId` — which raised a question reading the call sites
+in isolation cannot settle: does `--Xstable-name-length 0`'s documented
+"falls back to classic incrementing ids" behavior actually reach them, or
+does the different call site bypass it and keep emitting content-addressed
+ids regardless? Measured, not reasoned about: it reaches them, in the
+currently pinned build. `./scripts/fixtures-build --stable-width 0`
+compiles `fixtures/pass/instance-member.flix` and
+`fixtures/pass/derived-instance.flix` at width 0; censusing the result with
+`./scripts/class-id-report --stable-width 12` (12, not 0 — the width being
+searched for, not the width the build used; see that flag's own doc
+comment) finds `Def$greet$218936` / `Def$greet$218937` and
+`Eq.Def$eq$218956` in place of the hash suffixes (`Def$greet$caay4vt7o7m6`
+/ `Def$greet$q3ct2ikg4kl5` and `Eq/Def$eq$zv09qnbyrxqf`) both families carry
+at the default width — 5 sequential counters, 0 hash-derived ids, for each
+fixture. No content-addressed id from either family survived turning the
+flag down to zero.
+
 ### Collision policy
 
 Two different kinds of collision are possible here, and the fork handles
