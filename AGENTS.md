@@ -48,8 +48,10 @@ The wrapper adds verbs of its own, ahead of the compiler's:
   whether the compiler's collision guard caught it; `duplicate-decl-stress`
   is the front-end counterpart, generating many byte-identical duplicate
   top-level declarations and checking that every one stays cited at its
-  own source line even though their content is indistinguishable.
-  `class-id-report` never needs a compiler at all; the other three both
+  own source line even though their content is indistinguishable;
+  `fixtures-check` compiles every file under `fixtures/` and checks it
+  behaved as that file's own header comment says it should.
+  `class-id-report` never needs a compiler at all; the other four both
   compile against whichever jar they are pointed at (`--flix-jar`,
   `$FLIX_JAR`, `./flix.jar`, or `flix` on `$PATH`), deliberately never
   through `flixw`, since comparing or stress-testing arbitrary builds is
@@ -58,6 +60,13 @@ The wrapper adds verbs of its own, ahead of the compiler's:
   own and are not directly executable -- `scala-cli`'s `using jar`
   directive is a static literal, so the wrapper has to hand each one a
   resolved jar via `--jar`
+- `fixtures/` — small, hand-written, one-claim-per-file programs, checked
+  by `scripts/fixtures-check`: `positive/` holds one minimal example per
+  id-minting family, isolated from `AllConstructs.flix`'s kitchen-sink
+  shape so each is independently bisectable; `negative/` holds
+  duplicate-declaration patterns (enum, struct, trait, instance) that
+  `duplicate-decl-stress` does not parametrically reach, each constructed
+  so name *and* content collide, not just name
 - `.github/workflows/` — `build-and-test.yaml` on three platforms,
   `update-flix.yaml` weekly, `docs.yaml` for the API documentation. All three
   drive the wrapper; none of them install Flix

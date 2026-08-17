@@ -49,7 +49,14 @@ The workflow, carried over from the exploration on the
    incorrect program stays individually diagnosable (and stays usable by
    IDE services keyed on the same symbols) even when its declarations are
    indistinguishable by content alone.
-6. Comparing that census across recompiles — with and without unrelated
+6. **`fixtures/`** — small, focused, hand-written programs, one claim per
+   file, checked by `scripts/fixtures-check`: `positive/` has one minimal
+   example per id-minting family (isolated from `AllConstructs.flix`'s
+   kitchen-sink shape so each is independently bisectable), `negative/`
+   has duplicate-declaration patterns `duplicate-decl-stress` does not
+   parametrically reach (enum, struct, trait, instance), each constructed
+   so name *and* content collide, not just name.
+7. Comparing that census across recompiles — with and without unrelated
    source edits — is what shows whether a naming scheme is actually stable:
    a hash-derived id should reappear unchanged; a counter-derived one
    renumbers as soon as an earlier declaration shifts.
@@ -85,7 +92,11 @@ it outside the repository, and runs it. Later commands reuse the cache.
 │   ├── class-id-report(.scala|.cmd)         censuses generated symbol names in build/class
 │   ├── edit-resistance(.scala|.cmd)         measures name/byte survival across perturbations
 │   ├── collision-stress(.scala|.cmd)        tries to trigger a stable-name collision for real
-│   └── duplicate-decl-stress(.scala|.cmd)   checks identical duplicate decls stay diagnosable
+│   ├── duplicate-decl-stress(.scala|.cmd)   checks identical duplicate decls stay diagnosable
+│   └── fixtures-check(.scala|.cmd)          verifies every file under fixtures/
+├── fixtures/
+│   ├── positive/                 one minimal, focused example per id-minting family
+│   └── negative/                 duplicate-decl patterns not stress-tested elsewhere
 ├── docs/
 │   └── adr/                      architecture decision records, e.g. the naming scheme
 ├── .flixw/
@@ -177,8 +188,10 @@ on that branch — it isn't a hello-world, so it's named for what it actually
 is: `main`'s own banner already called it "Flix All Constructs
 Demonstration"), alongside `test/TestMain.flix` and real `flix.toml`
 metadata, and `scripts/class-id-report`, `scripts/edit-resistance`,
-`scripts/collision-stress`, and `scripts/duplicate-decl-stress` are in
-place under `scripts/`.
+`scripts/collision-stress`, `scripts/duplicate-decl-stress`, and
+`scripts/fixtures-check` are in place under `scripts/`, alongside the
+`fixtures/positive/` and `fixtures/negative/` examples the last of those
+checks.
 
 The Flix and `flixw` badges read `.flixw/lock.toml` directly, so re-pinning with
 `./flixw pin <version>` updates them without touching this file.
