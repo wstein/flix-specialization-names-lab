@@ -69,7 +69,15 @@ object FixturesCheck {
 
     val passResults = checkAll(passDir, expectSuccess = true, isStable, config)
     val failResults = checkAll(failDir, expectSuccess = false, isStable, config)
-    val allResults = passResults ++ failResults
+
+    val allConstructsFile = root.resolve("src/AllConstructs.flix")
+    val allConstructsResult = if (Files.exists(allConstructsFile)) {
+      println(s"src (integration demo):")
+      val namesFile = root.resolve("test/AllConstructs.names")
+      List(checkSingle(allConstructsFile, namesFileOpt = Some(namesFile), expectSuccess = true, isStable, config))
+    } else Nil
+
+    val allResults = passResults ++ failResults ++ allConstructsResult
 
     println()
     val failures = allResults.count(!_)
@@ -103,6 +111,10 @@ object FixturesCheck {
   }
 
   private def check(file: Path, expectSuccess: Boolean, isStable: Boolean, config: Config): Boolean = {
+    checkSingle(file, namesFileOpt = None, expectSuccess, isStable, config)
+  }
+
+  private def checkSingle(file: Path, namesFileOpt: Option[Path], expectSuccess: Boolean, isStable: Boolean, config: Config): Boolean = {
     val name = file.getFileName.toString
     val stem = name.stripSuffix(".flix")
     val source = new String(Files.readAllBytes(file), java.nio.charset.StandardCharsets.UTF_8)
@@ -127,18 +139,19 @@ object FixturesCheck {
           val isCounterId = fixtureClasses.exists(c => c.matches(".*\\$[0-9]+(\\..*)?$"))
           val hasStableNames = isStable || (!isCounterId && fixtureClasses.exists(c => c.matches(".*\\$[a-z0-9]{8,}.*")))
 
-          val namesFile = file.getParent.resolve(s"$stem.names")
+          val namesFile = namesFileOpt.getOrElse(file.getParent.resolve(s"$stem.names"))
+          val namesFileName = namesFile.getFileName.toString
           if (config.updateSnapshots && hasStableNames) {
             Files.write(namesFile, (fixtureClasses.mkString("\n") + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
-            println(f"  PASS  $name%-32s compiled, updated $stem.names (${fixtureClasses.size} class(es))")
+            println(f"  PASS  $name%-32s compiled, updated $namesFileName (${fixtureClasses.size} class(es))")
             true
           } else if (hasStableNames && Files.exists(namesFile)) {
             val expected = new String(Files.readAllBytes(namesFile), java.nio.charset.StandardCharsets.UTF_8).trim.linesIterator.toList.filter(_.nonEmpty)
             if (fixtureClasses == expected) {
-              println(f"  PASS  $name%-32s compiled, matched $stem.names (${fixtureClasses.size} stable class(es))")
+              println(f"  PASS  $name%-32s compiled, matched $namesFileName (${fixtureClasses.size} stable class(es))")
               true
             } else {
-              println(f"  FAIL  $name%-32s generated classes do not match $stem.names")
+              println(f"  FAIL  $name%-32s generated classes do not match $namesFileName")
               println(s"        expected: $expected")
               println(s"        actual:   $fixtureClasses")
               false
@@ -193,33 +206,24 @@ object FixturesCheck {
   }
 
   private def isFixtureClass(path: String): Boolean = {
-    !path.startsWith("dev/flix/runtime/") &&
-    !path.startsWith("Fs/") &&
-    !path.startsWith("Net/") &&
-    !path.startsWith("Sys/") &&
-    !path.startsWith("Math/") &&
-    !path.startsWith("Time") &&
-    !path.startsWith("Logger") &&
-    !path.startsWith("Record") &&
-    !path.startsWith("Tuple") &&
-    !path.startsWith("Tag") &&
-    !path.startsWith("ExtTagged") &&
-    !path.startsWith("Tagged") &&
-    !path.startsWith("Root") &&
-    !path.startsWith("Eff$") &&
-    !path.startsWith("Fn") &&
-    !path.matches("^Clo[0-9].*") &&
-    !path.startsWith("Main.") &&
-    !path.startsWith("Def$main") &&
-    !path.startsWith("Def$println") &&
-    !path.matches("^List\\$.*\\$Nil\\.class$") &&
-    !path.matches("^Option\\$.*\\$None\\.class$") &&
-    !path.equals("ToString.class") &&
-    !path.startsWith("ToString/Def$toString$") &&
-    !path.equals("DemoBox.class") &&
-    !path.matches("^Struct\\$.*") &&
-    !path.equals("Def$anonClassDemo.class") &&
-    !path.equals("Def$liftedClosures.class")
+    val userPrefixes = List(
+      "Anon$", "DemoBox/", "Person/", "Describable/", "Wrapper$", "Clo$liftedClosures$",
+      "Def$describeShape$", "Def$roundTrip$"
+    )
+    val userDefPrefixes = List(
+      "Def$add$", "Def$anonClassDemo$", "Def$binaryPipelineDemo$", "Def$boxDemo$", "Def$collectionsDemo$",
+      "Def$concurrencyDemo$", "Def$curriedMultiply$", "Def$datalogDemo$", "Def$describeItem$", "Def$describeShape$",
+      "Def$factorial$", "Def$genericIdentity$", "Def$getX$", "Def$higherOrderDemo$", "Def$imperativeDemo$",
+      "Def$incrementState$", "Def$javaExceptionDemo$", "Def$javaInteropDemo$", "Def$lazyAndCastsDemo$",
+      "Def$liftedClosures$", "Def$liftedClosuresDemo$", "Def$literalsDemo$", "Def$manyInstantiations$",
+      "Def$parYieldDemo$", "Def$patternMatchDemo$", "Def$pipelineDemo$", "Def$recordDemo$",
+      "Def$repeatedStdlibDemo$", "Def$runEffectDemo$", "Def$selectDemo$", "Def$shapeArea$",
+      "Def$structDemo$", "Def$tuplePatternMatch$",
+      "Clo$anonClassDemo$", "Clo$collectionsDemo$", "Clo$concurrencyDemo$", "Clo$curriedMultiply$",
+      "Clo$datalogDemo$", "Clo$higherOrderDemo$", "Clo$imperativeDemo$", "Clo$lazyAndCastsDemo$",
+      "Clo$liftedClosures$", "Clo$parYieldDemo$", "Clo$selectDemo$"
+    )
+    userPrefixes.exists(p => path.startsWith(p)) || userDefPrefixes.exists(p => path.startsWith(p))
   }
 
   private def printErrors(errors: List[_]): Unit = {
