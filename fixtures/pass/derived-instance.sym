@@ -1,0 +1,14 @@
+case Color.Blue
+case Color.Green
+case Color.Red
+class Eq/Def$eq$zv09qnbyrxqf.class
+enum Color
+fun main
+instance Eq[Color]
+instance ToString[Color]
+instance-def Eq.eq$chlcplf2h0ok
+instance-def ToString.toString$awemhsldalu5
+var Eq.eq$chlcplf2h0ok/x
+var Eq.eq$chlcplf2h0ok/y
+var ToString.toString$awemhsldalu5/x
+var main/_unit

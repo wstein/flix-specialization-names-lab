@@ -1,0 +1,13 @@
+class Def$greet$caay4vt7o7m6.class
+class Def$greet$q3ct2ikg4kl5.class
+fun main
+instance Greet[Int32]
+instance Greet[String]
+instance-def greet$cp2wdlo268hm
+instance-def greet$j2hs4fn7yxhm
+sig Greet.greet
+trait Greet
+var Greet.greet/x
+var greet$cp2wdlo268hm/x
+var greet$j2hs4fn7yxhm/x
+var main/_unit

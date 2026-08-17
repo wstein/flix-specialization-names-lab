@@ -19,6 +19,7 @@
 package ca.uwaterloo.flix.tools
 
 import ca.uwaterloo.flix.api.{CompilerConstants, Flix}
+import ca.uwaterloo.flix.language.ast.{SourceLocation, TypedAst}
 import ca.uwaterloo.flix.language.ast.shared.SecurityContext
 import ca.uwaterloo.flix.util.{Options, Validation}
 
@@ -34,9 +35,11 @@ import scala.jdk.CollectionConverters._
   * `scripts/duplicate-decl-stress` in scope: those generate their own source and stress
   * a scale question ("how many specializations until a collision happens"). This checks
   * a fixed, hand-written, one-claim-per-file set instead, and only ever asks yes/no
-  * questions of each file ("does this compile", "does this fail without crashing") --
-  * see each fixture's own header comment for what it demonstrates and why it is built
-  * the way it is.
+  * questions of each file ("does this compile", "does this fail without crashing", and for
+  * `fixtures/pass/`, "does its non-stdlib symbol table -- and every generated id among it
+  * still mint a content-addressed hash, never a classic counter -- still match its golden
+  * `.sym` snapshot") -- see each fixture's own header comment for what it demonstrates and
+  * why it is built the way it is.
   *
   * Run with:
   *
@@ -73,8 +76,8 @@ object FixturesCheck {
     val allConstructsFile = root.resolve("src/AllConstructs.flix")
     val allConstructsResult = if (Files.exists(allConstructsFile)) {
       println(s"src (integration demo):")
-      val namesFile = root.resolve("test/AllConstructs.names")
-      List(checkSingle(allConstructsFile, namesFileOpt = Some(namesFile), expectSuccess = true, isStable, config))
+      val symFile = root.resolve("test/AllConstructs.sym")
+      List(checkSingle(allConstructsFile, symFileOpt = Some(symFile), expectSuccess = true, isStable, config))
     } else Nil
 
     val allResults = passResults ++ failResults ++ allConstructsResult
@@ -111,48 +114,70 @@ object FixturesCheck {
   }
 
   private def check(file: Path, expectSuccess: Boolean, isStable: Boolean, config: Config): Boolean = {
-    checkSingle(file, namesFileOpt = None, expectSuccess, isStable, config)
+    checkSingle(file, symFileOpt = None, expectSuccess, isStable, config)
   }
 
-  private def checkSingle(file: Path, namesFileOpt: Option[Path], expectSuccess: Boolean, isStable: Boolean, config: Config): Boolean = {
+  private def checkSingle(file: Path, symFileOpt: Option[Path], expectSuccess: Boolean, isStable: Boolean, config: Config): Boolean = {
     val name = file.getFileName.toString
     val stem = name.stripSuffix(".flix")
     val source = new String(Files.readAllBytes(file), java.nio.charset.StandardCharsets.UTF_8)
 
-    implicit val sctx: SecurityContext = SecurityContext.Unrestricted
-    val flix = new Flix()
-    flix.setOptions(Options.Default.copy(progress = false, incremental = false, threads = 1))
-    flix.addVirtualPath(CompilerConstants.VirtualTestFile, source)
+    def newFlix(): Flix = {
+      implicit val sctx: SecurityContext = SecurityContext.Unrestricted
+      val flix = new Flix()
+      flix.setOptions(Options.Default.copy(progress = false, incremental = false, threads = 1))
+      flix.addVirtualPath(CompilerConstants.VirtualTestFile, source)
+      flix
+    }
 
     try {
-      flix.compile() match {
+      newFlix().compile() match {
         case Validation.Success(result) =>
           if (!expectSuccess) {
             println(f"  FAIL  $name%-32s compiled, but was expected to fail")
             return false
           }
 
-          val fixtureEntries = result.getClasses.keys.flatMap { jvmName =>
+          // Two views, merged: `check()` gives the pre-specialization symbol table --
+          // every mod/trait/sig/fun/var/enum/case/struct/field/instance/effect/op/alias the
+          // user actually wrote, not filtered to only the ones that happen to mint an id --
+          // but it runs before monomorphization, so specialized-def, lifted-lambda,
+          // anonymous-class, and enum-case ids don't exist yet there; only instance
+          // members and derived instance defs (Namer/Deriver) mint theirs early enough to
+          // show up, already embedded in the symbol's own name (e.g. `toString$<id>`).
+          // `compile()`'s generated classes are still needed for the other four families'
+          // ids, which only exist post-codegen.
+          val (rootOpt, _) = newFlix().check()
+          val sourceEntries = rootOpt.map(sourceSymbols).getOrElse(Nil)
+          val sourceCounters = rootOpt.map(sourceIdRegressions).getOrElse(Nil)
+
+          val classEntries = result.getClasses.keys.flatMap { jvmName =>
             val path = (jvmName.pkg :+ s"${jvmName.name}.class").mkString("/")
             matchedPrefix(path).map(prefix => path -> classify(path, prefix))
-          }.toList.sortBy(_._1)
-          val rendered = fixtureEntries.map { case (path, kind) => s"$path $kind" }
+          }.toList
+          val classCounters = classEntries.collect { case (path, "counter") => path }
+          // "none" (no id at all, e.g. an unspecialized enum case tag) is dropped here: the
+          // source-level `case`/`field` entry above already records that the symbol exists,
+          // so a bytecode entry with nothing else to add is pure duplication.
+          val classLines = classEntries.collect { case (path, k) if k != "none" => s"class $path" }
 
-          val hasHash = fixtureEntries.exists(_._2 == "hash")
-          val counters = fixtureEntries.collect { case (path, "counter") => path }
+          val rendered = (sourceEntries ++ classLines).sorted
+          val counters = sourceCounters ++ classCounters
 
-          val namesFile = namesFileOpt.getOrElse(file.getParent.resolve(s"$stem.names"))
-          val namesFileName = namesFile.getFileName.toString
+          val symFile = symFileOpt.getOrElse(file.getParent.resolve(s"$stem.sym"))
+          val symFileName = symFile.getFileName.toString
 
           // `isStable` alone cannot gate this: `java -jar ... --version` never echoes the
           // "+stable.names.N" build metadata that lives only in .flixw/lock.toml, so it is
           // false on every ordinary wrapper-driven run against this project's own pinned
           // fork -- relying on it here would make the whole check silently inert. A prior
-          // golden snapshot recording at least one hash id is the more durable signal: once
-          // a fixture has demonstrated it mints a content-addressed id, that id going away
-          // is a regression to fail on, not license to fall back to "stock compiler, skip".
-          val hadStableSnapshot = Files.exists(namesFile) &&
-            new String(Files.readAllBytes(namesFile), java.nio.charset.StandardCharsets.UTF_8).linesIterator.exists(_.endsWith(" hash"))
+          // golden snapshot recording at least one `$`-id-bearing entry is the more durable
+          // signal: once a fixture has demonstrated it mints a content-addressed id, that id
+          // going away is a regression to fail on, not license to fall back to "stock
+          // compiler, skip".
+          val hasHash = classEntries.exists(_._2 == "hash") || sourceEntries.exists(_.contains("$"))
+          val hadStableSnapshot = Files.exists(symFile) &&
+            new String(Files.readAllBytes(symFile), java.nio.charset.StandardCharsets.UTF_8).linesIterator.exists(_.contains("$"))
           val hasStableNames = isStable || hasHash || hadStableSnapshot
 
           // A counter-shaped id anywhere a hash was expected -- this run producing one, or
@@ -165,16 +190,16 @@ object FixturesCheck {
             println(f"  FAIL  $name%-32s minted a counter-shaped id where a content-addressed hash was expected: ${counters.mkString(", ")}")
             false
           } else if (config.updateSnapshots && hasStableNames) {
-            Files.write(namesFile, (rendered.mkString("\n") + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
-            println(f"  PASS  $name%-32s compiled, updated $namesFileName (${rendered.size} class(es))")
+            Files.write(symFile, (rendered.mkString("\n") + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+            println(f"  PASS  $name%-32s compiled, updated $symFileName (${rendered.size} symbol(s))")
             true
-          } else if (hasStableNames && Files.exists(namesFile)) {
-            val expected = new String(Files.readAllBytes(namesFile), java.nio.charset.StandardCharsets.UTF_8).trim.linesIterator.toList.filter(_.nonEmpty)
+          } else if (hasStableNames && Files.exists(symFile)) {
+            val expected = new String(Files.readAllBytes(symFile), java.nio.charset.StandardCharsets.UTF_8).trim.linesIterator.toList.filter(_.nonEmpty)
             if (rendered == expected) {
-              println(f"  PASS  $name%-32s compiled, matched $namesFileName (${rendered.size} stable class(es))")
+              println(f"  PASS  $name%-32s compiled, matched $symFileName (${rendered.size} symbol(s))")
               true
             } else {
-              println(f"  FAIL  $name%-32s generated classes do not match $namesFileName")
+              println(f"  FAIL  $name%-32s symbols do not match $symFileName")
               println(s"        expected: $expected")
               println(s"        actual:   $rendered")
               false
@@ -183,7 +208,7 @@ object FixturesCheck {
             println(f"  PASS  $name%-32s compiled (stable.names check skipped on stock compiler)")
             true
           } else {
-            println(f"  PASS  $name%-32s compiled (${rendered.size} class(es))")
+            println(f"  PASS  $name%-32s compiled (${rendered.size} symbol(s))")
             true
           }
 
@@ -263,6 +288,98 @@ object FixturesCheck {
     if (idRun.isEmpty) "none"
     else if (idRun.forall(_.isDigit) && idRun.length < 8) "counter"
     else "hash"
+  }
+
+  // The fixture's own source, whatever its filename, always compiles under this fixed
+  // virtual name -- see CompilerConstants.VirtualTestFile and every .expect file's
+  // "__TEST__.flix:line:col" citations.
+  private val TestFileName = "__TEST__.flix"
+
+  private def isUserCode(loc: SourceLocation): Boolean = loc.source.name == TestFileName
+
+  private def qualify(namespace: List[String], name: String): String = (namespace :+ name).mkString(".")
+
+  /**
+    * Every non-stdlib symbol the fixture's own source declares -- not just the ones that
+    * happen to mint a generated id -- one `<kind> <qualified name>` line each: `mod`,
+    * `trait`, `sig`, `fun` (top-level defs), `var` (formal parameters), `enum`, `case`,
+    * `struct`, `field`, `instance`, `instance-def` (an instance's or derived instance's own
+    * member, whose name already embeds its id -- see checkSingle's doc comment), `effect`,
+    * `op`, `alias`. Deliberately stops at formal parameters: recursing into expression
+    * bodies to list every let-bound and match-bound local would mostly surface compiler-
+    * introduced desugaring artifacts, not symbols a reader of the fixture would recognize.
+    */
+  private def sourceSymbols(root: TypedAst.Root): List[String] = {
+    def fparamVars(qualifiedOwner: String, fparams: Iterable[TypedAst.FormalParam]): Iterator[String] =
+      fparams.iterator.filter(fp => isUserCode(fp.loc)).map(fp => s"var $qualifiedOwner/${fp.bnd.sym.text}")
+
+    val mods = root.modules.values.iterator.filter(m => isUserCode(m.loc) && !m.sym.isRoot)
+      .map(m => s"mod ${m.sym.ns.mkString(".")}")
+
+    val traits = root.traits.values.iterator.filter(t => isUserCode(t.loc))
+      .map(t => s"trait ${qualify(t.sym.namespace, t.sym.name)}")
+
+    val sigs = root.sigs.values.iterator.filter(s => isUserCode(s.loc))
+    val sigLines = sigs.map(s => s"sig ${qualify(s.sym.namespace, s.sym.name)}")
+    val sigVars = root.sigs.values.iterator.filter(s => isUserCode(s.loc))
+      .flatMap(s => fparamVars(qualify(s.sym.namespace, s.sym.name), s.spec.fparams.toList))
+
+    val defs = root.defs.values.iterator.filter(d => isUserCode(d.loc))
+    val defLines = defs.map(d => s"fun ${qualify(d.sym.namespace, d.sym.name)}")
+    val defVars = root.defs.values.iterator.filter(d => isUserCode(d.loc))
+      .flatMap(d => fparamVars(qualify(d.sym.namespace, d.sym.name), d.spec.fparams.toList))
+
+    val enums = root.enums.values.iterator.filter(e => isUserCode(e.loc))
+    val enumLines = enums.map(e => s"enum ${qualify(e.sym.namespace, e.sym.name)}")
+    val caseLines = root.enums.values.iterator.filter(e => isUserCode(e.loc)).flatMap(_.cases.values)
+      .filter(c => isUserCode(c.loc)).map(c => s"case ${qualify(c.sym.namespace, c.sym.name)}")
+
+    val structs = root.structs.values.iterator.filter(s => isUserCode(s.loc))
+    val structLines = structs.map(s => s"struct ${qualify(s.sym.namespace, s.sym.name)}")
+    val fieldLines = root.structs.values.iterator.filter(s => isUserCode(s.loc)).flatMap(_.fields.values)
+      .filter(f => isUserCode(f.loc)).map(f => s"field ${qualify(f.sym.namespace, f.sym.name)}")
+
+    val instances = root.instances.values.iterator.filter(i => isUserCode(i.loc))
+    val instanceLines = instances.map(i => s"instance ${i.trt.sym.name}[${i.tpe}]")
+    val instanceDefLines = root.instances.values.iterator.filter(i => isUserCode(i.loc)).flatMap(_.defs)
+      .filter(d => isUserCode(d.loc)).map(d => s"instance-def ${qualify(d.sym.namespace, d.sym.name)}")
+    val instanceDefVars = root.instances.values.iterator.filter(i => isUserCode(i.loc)).flatMap(_.defs)
+      .filter(d => isUserCode(d.loc))
+      .flatMap(d => fparamVars(qualify(d.sym.namespace, d.sym.name), d.spec.fparams.toList))
+
+    val effects = root.effects.values.iterator.filter(e => isUserCode(e.loc))
+    val effectLines = effects.map(e => s"effect ${qualify(e.sym.namespace, e.sym.name)}")
+    val opLines = root.effects.values.iterator.filter(e => isUserCode(e.loc)).flatMap(_.ops)
+      .filter(o => isUserCode(o.loc)).map(o => s"op ${qualify(o.sym.namespace, o.sym.name)}")
+
+    val aliases = root.typeAliases.values.iterator.filter(a => isUserCode(a.loc))
+      .map(a => s"alias ${qualify(a.sym.namespace, a.sym.name)}")
+
+    (mods ++ traits ++ sigLines ++ sigVars ++ defLines ++ defVars ++ enumLines ++ caseLines ++
+      structLines ++ fieldLines ++ instanceLines ++ instanceDefLines ++ instanceDefVars ++
+      effectLines ++ opLines ++ aliases).toList
+  }
+
+  // Instance members and derived instance defs (Namer/Deriver) mint their id early enough
+  // that it is already part of the symbol's own name by check()-time -- e.g.
+  // `toString$awemhsldalu5` -- unlike the four families that only get theirs at codegen.
+  // The id is always the trailing `$`-segment for this family (unlike the bytecode-level
+  // enum-case family, where a case tag can follow it), so a plain last-`$`-split suffices.
+  //
+  // Verified against a build forced to --Xstable-name-length 0 that this name stays
+  // hash-shaped regardless -- the fallback to classic incrementing ids for these two
+  // families happens later, only in the rendered bytecode class name (which is what
+  // `classify` below catches). So this function is not a second, redundant path to the
+  // same failure: it exists for a distinct, still-plausible regression -- Namer or Deriver
+  // itself minting a non-content-addressed id at the AST level -- that a bytecode-only
+  // check could miss if it ever happened to render into a fixed-width-looking string.
+  private def sourceIdRegressions(root: TypedAst.Root): List[String] = {
+    root.instances.values.filter(i => isUserCode(i.loc)).flatMap(_.defs).filter(d => isUserCode(d.loc))
+      .flatMap { d =>
+        val qualified = qualify(d.sym.namespace, d.sym.name)
+        val suffix = d.sym.name.substring(d.sym.name.lastIndexOf('$') + 1)
+        if (d.sym.name.contains("$") && suffix.forall(_.isDigit) && suffix.length < 8) Some(qualified) else None
+      }.toList
   }
 
   private def printErrors(errors: List[_]): Unit = {

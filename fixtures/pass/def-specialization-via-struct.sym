@@ -1,0 +1,11 @@
+class DemoBox/Def$roundTrip$7ok6l6pengyf.class
+class DemoBox/Def$roundTrip$hh163w2scrby.class
+class DemoBox/Def$roundTrip$p6klyiqrex9e.class
+field DemoBox.value
+fun DemoBox.roundTrip
+fun main
+mod DemoBox
+struct DemoBox
+var DemoBox.roundTrip/rc
+var DemoBox.roundTrip/v
+var main/_unit
