@@ -140,6 +140,39 @@ hashes never differ by case alone. The cost is a longer, fixed-width
 13-character suffix instead of a shorter mixed-case one, which is accepted
 in exchange for not having a platform-specific failure mode.
 
+### `--Xstable-name-length`: a configurable, narrower suffix
+
+13 characters is the default, not the only width: `--Xstable-name-length`
+selects a narrower suffix, and the wiring for it is now confirmed against a
+real corpus rather than just unit-tested. Built at `../flix-stable-naming-lab`
+and compiled at widths 4, 8, and 12:
+
+| Class | width=4 | width=8 | width=12 |
+| --- | --- | --- | --- |
+| `Def$println$*` | `tsp2` | `l2f6tsp2` | `tly4l2f6tsp2` |
+| `List$*$Nil` | `za9x` | `hd9oza9x` | `yamvhd9oza9x` |
+| `Option$*$None` | `rq1k` | `qu22rq1k` | `hq54qu22rq1k` |
+| `ToString/Def$toString$*` (×3) | `c0ht`, `inv0`, `of6y` | `g5pec0ht`, `7xeeinv0`, `2mtmof6y` | `xiybg5pec0ht`, `ts307xeeinv0`, `l88h2mtmof6y` |
+
+Every narrower suffix is exactly the trailing substring of the wider one, at
+every width tested. That is the modulo-truncation nesting `StableName` was
+built for, not a coincidence: the id is computed once, at full width, and a
+narrower rendering truncates that same value rather than deriving an
+unrelated shorter hash. Turning the flag down later can only ever chop
+characters off an existing name, never renumber it.
+
+A narrower suffix trades away collision margin for a smaller name: the
+fewer base-36 characters a rendered class name ends in, the more distinct
+specializations can share that literal name by chance, independent of how
+many distinct 64-bit ids the compiler actually minted. The birthday-bound
+math in Collision policy below is computed for the full-width default and
+does not carry over unchanged to a narrowed rendering — whether the
+full-symbol collision guard described there still catches two different
+ids that happen to truncate to the same short name is not established
+here. `--Xstable-name-length` is an escape hatch for builds that want
+smaller names and can accept that open question, not a replacement for
+the 13-character default.
+
 ### Collision policy
 
 Two different kinds of collision are possible here, and the fork handles
