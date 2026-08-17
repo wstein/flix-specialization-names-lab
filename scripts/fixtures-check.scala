@@ -305,16 +305,20 @@ object FixturesCheck {
 
   // A candidate id is one of three things, not two: `counter` (a classic incrementing id --
   // digit-only and short, the pre-stable-naming shape), `hash` (a content-addressed id at
-  // its expected width, give or take one -- StableName.render does not left-pad, so ~1/36 of
-  // ids legitimately render one character short of the width they were computed at), or
-  // `malformed` -- neither. A candidate this project has never seen land in that third
-  // bucket, but nothing before this guaranteed it couldn't: the old two-way split called
-  // anything non-digit-or-long "hash" purely by shape, with no check that it was actually
-  // the right length for what this compiler is supposed to produce.
+  // exactly its expected width), or `malformed` -- neither. Exactly, not within one: earlier
+  // than 0.75.3+stable.names.5, StableName.render did not left-pad, so ~1/36 of ids -- one
+  // whose leading base-36 digit happened to be zero -- legitimately rendered one character
+  // short of the width they were computed at (e.g. `z56ok3gyegs` for what StableName.of
+  // itself calls `0z56ok3gyegs`), and this check tolerated that width-1 case as `hash` too.
+  // stable.names.5 pads (fixed in the fork's cae8fa01e, pinned in TestArtifactStability's
+  // "fixedWidthIds.02", and hardened further in b6306b2e6, which makes a non-full-width id a
+  // compiler error rather than merely a rendering quirk) -- so as of that release, a width-1
+  // id is not a shorter spelling of a valid hash, it is exactly the regression this project
+  // exists to catch, and belongs in the `malformed` bucket like any other wrong length.
   private def classifyId(id: String): String = {
     if (id.isEmpty) "none"
     else if (id.forall(_.isDigit) && id.length < 8) "counter"
-    else if (id.length >= ExpectedHashWidth - 1 && id.length <= ExpectedHashWidth) "hash"
+    else if (id.length == ExpectedHashWidth) "hash"
     else "malformed"
   }
 

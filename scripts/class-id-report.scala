@@ -188,11 +188,15 @@ object Ids {
   // this floor, a literal name segment adjacent to a real id in the same qualified name (e.g.
   // "println" in `Def$println$218953`, or a derived def's own trait-member name) is a
   // lowercase base-36-valid word too, and the regex above cannot tell it apart from a real id
-  // by shape alone -- it would be miscounted as an extra hash-derived id. StableName.render
-  // only truncates a single leading zero digit in the common case (~1/36 of ids), so
-  // `width - 1` is the same tolerance the census already documents for un-padded rendering;
-  // below that, treat the match as noise rather than a doubly-truncated id (rarer still, and
-  // already outside what this census claims to measure precisely).
+  // by shape alone -- it would be miscounted as an extra hash-derived id. Before
+  // 0.75.3+stable.names.5, StableName.render did not left-pad, so it truncated a single
+  // leading zero digit in the common case (~1/36 of ids); `width - 1` is the tolerance for
+  // that. Kept even though the compiler-side fix has landed (see fixtures-check.scala's
+  // classifyId, which now requires an exact match instead): this census points at whatever
+  // jar it is handed, including older or third-party builds this project does not control,
+  // so it still needs to read a pre-padding build's ids correctly. Below `width - 1`, treat
+  // the match as noise rather than a doubly-truncated id (rarer still, and already outside
+  // what this census claims to measure precisely).
   private def isPlausibleId(id: String, width: Int): Boolean =
     id.forall(_.isDigit) || id.length >= math.max(1, width - 1)
 
