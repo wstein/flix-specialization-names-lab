@@ -74,6 +74,14 @@ object Arguments {
   // --Xstable-name-length narrows the compiler's stable-id suffix below its default, and
   // this census has no way to ask a build what width it actually used -- it never invokes
   // the compiler. 12 is the default here because it is the compiler's own current default.
+  //
+  // Must be >= 1: it sizes a regex quantifier ({1,n}) that extracts candidate ids, and a
+  // fixed-width id column of zero characters isn't a meaningful thing to look for. Note
+  // this is a different knob than compiling with `--Xstable-name-length 0`: that disables
+  // stable ids for the families that respect the flag, but a census of that build should
+  // still pass the compiler's normal default width here, not 0 -- any id-minting family
+  // that bypasses the flag keeps emitting fixed-width hashes at that width regardless, and
+  // that's exactly the mismatch worth catching.
   private val DefaultStableWidth = 12
 
   private val Usage = "Usage: ./scripts/class-id-report [class-directory-or-jar] [--output-dir directory] [--json]\n" +
@@ -98,7 +106,7 @@ object Arguments {
       case "--json" :: tail => select(ReportFormat.Json); remaining = tail
       case ("--output-dir" | "-o") :: directory :: tail => outputDir = Paths.get(directory); remaining = tail
       case "--stable-width" :: width :: tail =>
-        stableWidth = width.toIntOption.getOrElse(fail())
+        stableWidth = width.toIntOption.filter(_ >= 1).getOrElse(fail())
         remaining = tail
       case ("-h" | "--help") :: _ => println(Usage); sys.exit(0)
       case path :: tail if !path.startsWith("-") && !inputSet =>
@@ -171,8 +179,22 @@ object Ids {
   private def base36(width: Int): scala.util.matching.Regex = s"\\$$([0-9a-z]{1,$width})(?![0-9a-z])".r
 
   def in(text: String, width: Int): List[String] = {
-    base36(width).findAllMatchIn(text).map(_.group(1)).toList
+    base36(width).findAllMatchIn(text).map(_.group(1)).filter(isPlausibleId(_, width)).toList
   }
+
+  // A raw regex match is only a real generated id, not textual noise, if it is either purely
+  // numeric (a counter, at any length -- old GenSym counters and hash ids that happen to
+  // render all-digit both qualify) or long enough to plausibly be a full-width hash. Without
+  // this floor, a literal name segment adjacent to a real id in the same qualified name (e.g.
+  // "println" in `Def$println$218953`, or a derived def's own trait-member name) is a
+  // lowercase base-36-valid word too, and the regex above cannot tell it apart from a real id
+  // by shape alone -- it would be miscounted as an extra hash-derived id. StableName.render
+  // only truncates a single leading zero digit in the common case (~1/36 of ids), so
+  // `width - 1` is the same tolerance the census already documents for un-padded rendering;
+  // below that, treat the match as noise rather than a doubly-truncated id (rarer still, and
+  // already outside what this census claims to measure precisely).
+  private def isPlausibleId(id: String, width: Int): Boolean =
+    id.forall(_.isDigit) || id.length >= math.max(1, width - 1)
 
   def isCounter(id: String, width: Int): Boolean = {
     if (!id.forall(_.isDigit)) false
