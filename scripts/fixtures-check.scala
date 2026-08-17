@@ -151,8 +151,9 @@ object FixturesCheck {
           val (rootOpt, _) = newFlix().check()
           val sourceEntries = rootOpt.map(sourceSymbols).getOrElse(Nil)
           val instanceDefIds = rootOpt.map(sourceInstanceDefIds).getOrElse(Nil)
-          val sourceCounters = instanceDefIds.filter(_.isCounter).map(_.qualified)
-          val sourceHashes = instanceDefIds.filterNot(_.isCounter).map(_.id)
+          val sourceProblems = instanceDefIds.filter(d => d.kind == "counter" || d.kind == "malformed")
+            .map(d => s"${d.qualified} (${d.kind})")
+          val sourceHashes = instanceDefIds.filter(_.kind == "hash").map(_.id)
 
           val classEntries = result.getClasses.keys.flatMap { jvmName =>
             val path = (jvmName.pkg :+ s"${jvmName.name}.class").mkString("/")
@@ -161,16 +162,17 @@ object FixturesCheck {
               (path, kind, id)
             }
           }.toList
-          val classCounters = classEntries.collect { case (path, "counter", _) => path }
+          val classProblems = classEntries.collect { case (path, k, _) if k == "counter" || k == "malformed" => s"$path ($k)" }
           val classHashes = classEntries.collect { case (_, "hash", id) => id }
           // "none" (no id at all, e.g. an unspecialized enum case tag) is dropped here: the
           // source-level `case`/`field` entry above already records that the symbol exists,
-          // so a bytecode entry with nothing else to add is pure duplication.
+          // so a bytecode entry with nothing else to add is pure duplication. A `malformed`
+          // entry is kept, same as `hash`: it is id-bearing, just not at the expected width.
           val classLines = classEntries.collect { case (path, k, _) if k != "none" => s"class $path" }
 
           val renderedSym = (sourceEntries ++ classLines).sorted
           val renderedHashes = (sourceHashes ++ classHashes).distinct.sorted
-          val counters = sourceCounters ++ classCounters
+          val problems = sourceProblems ++ classProblems
 
           val symFile = symFileOpt.getOrElse(file.getParent.resolve(s"$stem.sym"))
           val hashesFile = hashesFileOpt.getOrElse(file.getParent.resolve(s"$stem.hashes"))
@@ -188,14 +190,14 @@ object FixturesCheck {
             new String(Files.readAllBytes(symFile), java.nio.charset.StandardCharsets.UTF_8).linesIterator.exists(_.contains("$"))
           val hasStableNames = isStable || hasHash || hadStableSnapshot
 
-          // A counter-shaped id anywhere a hash was expected -- this run producing one, or
-          // any prior snapshot ever having recorded one -- is a regression worth failing
-          // loudly on, independent of whether it happens to match (or gets baked into, via
-          // -u) a stale snapshot: the whole point of these fixtures is that every
-          // id-minting family they exercise mints a content-addressed hash, never a classic
-          // incrementing counter.
-          if (hasStableNames && counters.nonEmpty) {
-            println(f"  FAIL  $name%-32s minted a counter-shaped id where a content-addressed hash was expected: ${counters.mkString(", ")}")
+          // A counter-shaped or wrong-width id anywhere a hash was expected -- this run
+          // producing one, or any prior snapshot ever having recorded one -- is a regression
+          // worth failing loudly on, independent of whether it happens to match (or gets
+          // baked into, via -u) a stale snapshot: the whole point of these fixtures is that
+          // every id-minting family they exercise mints a content-addressed hash at its
+          // expected width, never a classic incrementing counter or some other length.
+          if (hasStableNames && problems.nonEmpty) {
+            println(f"  FAIL  $name%-32s minted an id where a content-addressed hash was expected: ${problems.mkString(", ")}")
             false
           } else if (!hasStableNames) {
             println(f"  PASS  $name%-32s compiled (stable.names check skipped on stock compiler)")
@@ -295,6 +297,27 @@ object FixturesCheck {
 
   private def matchedPrefix(path: String): Option[String] = Prefixes.find(path.startsWith)
 
+  // StableName.DefaultWidth, mirroring class-id-report.scala's DefaultStableWidth: this
+  // project's fixtures always compile at the compiler's own built-in default (fixtures-check
+  // never passes --Xstable-name-length), so 12 is not a guess here the way it is for a
+  // census of an arbitrary build.
+  private val ExpectedHashWidth = 12
+
+  // A candidate id is one of three things, not two: `counter` (a classic incrementing id --
+  // digit-only and short, the pre-stable-naming shape), `hash` (a content-addressed id at
+  // its expected width, give or take one -- StableName.render does not left-pad, so ~1/36 of
+  // ids legitimately render one character short of the width they were computed at), or
+  // `malformed` -- neither. A candidate this project has never seen land in that third
+  // bucket, but nothing before this guaranteed it couldn't: the old two-way split called
+  // anything non-digit-or-long "hash" purely by shape, with no check that it was actually
+  // the right length for what this compiler is supposed to produce.
+  private def classifyId(id: String): String = {
+    if (id.isEmpty) "none"
+    else if (id.forall(_.isDigit) && id.length < 8) "counter"
+    else if (id.length >= ExpectedHashWidth - 1 && id.length <= ExpectedHashWidth) "hash"
+    else "malformed"
+  }
+
   // The id (if any) is whatever run of lowercase-base-36 characters immediately follows the
   // matched prefix -- a case tag or further literal name segment always starts with an
   // uppercase letter by Flix's own naming convention, so it naturally stops the run rather
@@ -304,11 +327,7 @@ object FixturesCheck {
   private def classify(path: String, prefix: String): (String, String) = {
     val rest = path.stripPrefix(prefix).stripSuffix(".class")
     val idRun = rest.takeWhile(c => c.isDigit || (c >= 'a' && c <= 'z'))
-    val kind =
-      if (idRun.isEmpty) "none"
-      else if (idRun.forall(_.isDigit) && idRun.length < 8) "counter"
-      else "hash"
-    (kind, idRun)
+    (classifyId(idRun), idRun)
   }
 
   // The fixture's own source, whatever its filename, always compiles under this fixed
@@ -392,9 +411,10 @@ object FixturesCheck {
   // families happens later, only in the rendered bytecode class name (which is what
   // `classify` below catches). So this function is not a second, redundant path to the
   // same failure: it exists for a distinct, still-plausible regression -- Namer or Deriver
-  // itself minting a non-content-addressed id at the AST level -- that a bytecode-only
-  // check could miss if it ever happened to render into a fixed-width-looking string.
-  private case class InstanceDefId(qualified: String, id: String, isCounter: Boolean)
+  // itself minting a non-content-addressed, or wrong-width, id at the AST level -- that a
+  // bytecode-only check could miss if it ever happened to render into a fixed-width-looking
+  // string.
+  private case class InstanceDefId(qualified: String, id: String, kind: String)
 
   private def sourceInstanceDefIds(root: TypedAst.Root): List[InstanceDefId] = {
     root.instances.values.filter(i => isUserCode(i.loc)).flatMap(_.defs).filter(d => isUserCode(d.loc))
@@ -403,7 +423,7 @@ object FixturesCheck {
         if (idx < 0) None
         else {
           val id = d.sym.name.substring(idx + 1)
-          Some(InstanceDefId(qualify(d.sym.namespace, d.sym.name), id, id.forall(_.isDigit) && id.length < 8))
+          Some(InstanceDefId(qualify(d.sym.namespace, d.sym.name), id, classifyId(id)))
         }
       }.toList
   }
