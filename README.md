@@ -10,7 +10,7 @@ A lab for studying how the [Flix](https://flix.dev) compiler names the
 classes it generates when it specializes polymorphic code. Historically those
 names carried a sequential counter suffix (`$1234`) that renumbers on almost
 any unrelated edit; a fork under study replaces it with a fixed-width,
-content-addressed SHA-256 suffix (13 lowercase base-36 characters) so a
+content-addressed SHA-256 suffix (12 lowercase base-36 characters) so a
 specialization's name is stable across recompiles and only changes when the
 code it names actually changes.
 

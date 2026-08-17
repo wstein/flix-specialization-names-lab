@@ -161,26 +161,24 @@ object Reports {
 }
 
 object Ids {
-  // Stable-id width is not fixed: --Xstable-name-length changes it, and this script has to
-  // be told what width a given build actually used, since it never invokes the compiler
-  // and so cannot ask. A `width`-digit decimal counter would be indistinguishable
-  // from a base-36 stable id of the same width and so get classified as one; accepted
-  // rather than fixed, since nothing realistic mints a counter anywhere near that large.
-  // The stable-name families that ever reach a class/method/field name no longer use a
-  // counter at all, and the counter-based ids this script also has to read from older
-  // compiler output peak at roughly the number of ids minted per compile -- about
-  // 230,000 (six digits) for a full stdlib build -- many orders of magnitude short of what
-  // even the narrowest realistic --Xstable-name-length already tolerates.
-  private def stable(width: Int): scala.util.matching.Regex = s"\\$$([0-9a-z]{$width})(?![0-9a-z])".r
-  private val Counter = "\\$(\\d+)(?![0-9a-z])".r
+  // Stable-id width is configured by --Xstable-name-length (default 12).
+  // Because StableName.render does not left-pad with zeros, ~1/36 (2.8%) of stable hashes
+  // render shorter than the nominal width (e.g. 11 characters for width 12).
+  // Real sequential counters never exceed 6-7 digits (~230,000 ids in stdlib), so:
+  // - Any ID containing non-digit base-36 letters [a-z] (length <= width) is a stable id.
+  // - Any purely numeric ID with length >= 8 is a stable id that rendered all digits.
+  // - Any purely numeric ID with length < 8 is a counter.
+  private def base36(width: Int): scala.util.matching.Regex = s"\\$$([0-9a-z]{1,$width})(?![0-9a-z])".r
 
   def in(text: String, width: Int): List[String] = {
-    val stableIds = stable(width).findAllMatchIn(text).map(_.group(1)).toList
-    val counter = Counter.findAllMatchIn(text).map(_.group(1)).filter(_.length != width).toList
-    stableIds ++ counter
+    base36(width).findAllMatchIn(text).map(_.group(1)).toList
   }
 
-  def isCounter(id: String, width: Int): Boolean = id.forall(_.isDigit) && id.length != width
+  def isCounter(id: String, width: Int): Boolean = {
+    if (!id.forall(_.isDigit)) false
+    else if (width <= 6) id.length != width
+    else id.length < 8
+  }
 
   def order(id: String, width: Int): (Int, BigInt, String) =
     if (isCounter(id, width)) (0, BigInt(id), "") else (1, BigInt(0), id)

@@ -208,7 +208,7 @@ object FixturesCheck {
   private def isFixtureClass(path: String): Boolean = {
     val userPrefixes = List(
       "Anon$", "DemoBox/", "Person/", "Describable/", "Wrapper$", "Clo$liftedClosures$",
-      "Def$describeShape$", "Def$roundTrip$"
+      "Def$describeShape$", "Def$roundTrip$", "Def$greet$", "Eq/Def$eq$", "Color$"
     )
     val userDefPrefixes = List(
       "Def$add$", "Def$anonClassDemo$", "Def$binaryPipelineDemo$", "Def$boxDemo$", "Def$collectionsDemo$",
