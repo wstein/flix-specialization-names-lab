@@ -1,0 +1,4 @@
+DuplicateDerivation(Eq,__TEST__.flix:4:17,__TEST__.flix:4:21)
+DuplicateDerivation(Eq,__TEST__.flix:4:21,__TEST__.flix:4:17)
+OverlappingInstances(Eq,Enum(Color,Type),__TEST__.flix:4:17,__TEST__.flix:4:21)
+OverlappingInstances(Eq,Enum(Color,Type),__TEST__.flix:4:21,__TEST__.flix:4:17)
