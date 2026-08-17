@@ -1,0 +1,6 @@
+DuplicateLowerName(€x,__TEST__.flix:13:5,__TEST__.flix:18:5)
+DuplicateLowerName(€x,__TEST__.flix:18:5,__TEST__.flix:13:5)
+DuplicateLowerName(€y,__TEST__.flix:14:5,__TEST__.flix:19:5)
+DuplicateLowerName(€y,__TEST__.flix:19:5,__TEST__.flix:14:5)
+DuplicateUpperName(Point,__TEST__.flix:12:8,__TEST__.flix:17:8)
+DuplicateUpperName(Point,__TEST__.flix:17:8,__TEST__.flix:12:8)

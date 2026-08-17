@@ -1,0 +1,6 @@
+DuplicateUpperName(Active,__TEST__.flix:13:10,__TEST__.flix:8:10)
+DuplicateUpperName(Active,__TEST__.flix:8:10,__TEST__.flix:13:10)
+DuplicateUpperName(Inactive,__TEST__.flix:14:10,__TEST__.flix:9:10)
+DuplicateUpperName(Inactive,__TEST__.flix:9:10,__TEST__.flix:14:10)
+DuplicateUpperName(Status,__TEST__.flix:12:6,__TEST__.flix:7:6)
+DuplicateUpperName(Status,__TEST__.flix:7:6,__TEST__.flix:12:6)

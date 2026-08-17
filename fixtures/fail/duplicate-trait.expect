@@ -1,0 +1,4 @@
+DuplicateLowerName(describe,__TEST__.flix:10:13,__TEST__.flix:6:13)
+DuplicateLowerName(describe,__TEST__.flix:6:13,__TEST__.flix:10:13)
+DuplicateUpperName(Describable,__TEST__.flix:5:11,__TEST__.flix:9:11)
+DuplicateUpperName(Describable,__TEST__.flix:9:11,__TEST__.flix:5:11)

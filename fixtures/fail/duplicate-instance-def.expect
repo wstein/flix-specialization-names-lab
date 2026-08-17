@@ -1,0 +1,4 @@
+DuplicateInstanceDef(f,C,__TEST__.flix:10:13,__TEST__.flix:9:13)
+DuplicateInstanceDef(f,C,__TEST__.flix:14:13,__TEST__.flix:15:13)
+DuplicateInstanceDef(f,C,__TEST__.flix:15:13,__TEST__.flix:14:13)
+DuplicateInstanceDef(f,C,__TEST__.flix:9:13,__TEST__.flix:10:13)
