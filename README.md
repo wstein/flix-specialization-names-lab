@@ -55,7 +55,11 @@ The workflow, carried over from the exploration on the
    kitchen-sink shape so each is independently bisectable), `negative/`
    has duplicate-declaration patterns `duplicate-decl-stress` does not
    parametrically reach (enum, struct, trait, instance), each constructed
-   so name *and* content collide, not just name.
+   so name *and* content collide, not just name. `scripts/fixtures-build`
+   is the disk-writing counterpart: it compiles every file under
+   `fixtures/positive/` for real and writes each one's generated classes
+   to its own subdirectory of `build/fixtures/`, so `scripts/class-id-report`
+   can census a single fixture in isolation.
 7. Comparing that census across recompiles — with and without unrelated
    source edits — is what shows whether a naming scheme is actually stable:
    a hash-derived id should reappear unchanged; a counter-derived one
@@ -73,7 +77,8 @@ The workflow, carried over from the exploration on the
 │   ├── edit-resistance(.scala|.cmd)         measures name/byte survival across perturbations
 │   ├── collision-stress(.scala|.cmd)        tries to trigger a stable-name collision for real
 │   ├── duplicate-decl-stress(.scala|.cmd)   checks identical duplicate decls stay diagnosable
-│   └── fixtures-check(.scala|.cmd)          verifies every file under fixtures/
+│   ├── fixtures-check(.scala|.cmd)          verifies every file under fixtures/
+│   └── fixtures-build(.scala|.cmd)          builds fixtures/positive/ to build/fixtures/
 ├── fixtures/
 │   ├── positive/                 one minimal, focused example per id-minting family
 │   └── negative/                 duplicate-decl patterns not stress-tested elsewhere
@@ -103,10 +108,10 @@ on that branch — it isn't a hello-world, so it's named for what it actually
 is: `main`'s own banner already called it "Flix All Constructs
 Demonstration"), alongside `test/TestMain.flix` and real `flix.toml`
 metadata, and `scripts/class-id-report`, `scripts/edit-resistance`,
-`scripts/collision-stress`, `scripts/duplicate-decl-stress`, and
-`scripts/fixtures-check` are in place under `scripts/`, alongside the
-`fixtures/positive/` and `fixtures/negative/` examples the last of those
-checks.
+`scripts/collision-stress`, `scripts/duplicate-decl-stress`,
+`scripts/fixtures-check`, and `scripts/fixtures-build` are in place under
+`scripts/`, alongside the `fixtures/positive/` and `fixtures/negative/`
+examples the last two of those work against.
 
 ## License
 

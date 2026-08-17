@@ -50,8 +50,13 @@ The wrapper adds verbs of its own, ahead of the compiler's:
   top-level declarations and checking that every one stays cited at its
   own source line even though their content is indistinguishable;
   `fixtures-check` compiles every file under `fixtures/` and checks it
-  behaved as that file's own header comment says it should.
-  `class-id-report` never needs a compiler at all; the other four both
+  behaved as that file's own header comment says it should; `fixtures-build`
+  is its disk-writing counterpart, compiling every file under
+  `fixtures/positive/` for real and writing each one's generated classes to
+  its own subdirectory of `build/fixtures/`, so `class-id-report` can
+  census a single fixture in isolation, without `AllConstructs.flix`'s
+  hundreds of other generated names in the way.
+  `class-id-report` never needs a compiler at all; the other five both
   compile against whichever jar they are pointed at (`--flix-jar`,
   `$FLIX_JAR`, `./flix.jar`, or `flix` on `$PATH`), deliberately never
   through `flixw`, since comparing or stress-testing arbitrary builds is
