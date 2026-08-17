@@ -62,9 +62,39 @@ hashed by its own content.
 | --- | --- | --- | --- |
 | Specialized def | `DefnSym` | `monomorph.Specialization` | `SpecializationKey.of(defn.sym, tpe)` — the originating def plus a canonicalized rendering of the specialization's type: type variables numbered by first occurrence (not by inference-allocated symbol), aliases resolved to their underlying type, associated types reduced, record/schema rows sorted, effects in canonical form |
 | Lifted lambda / closure | `DefnSym` | `LambdaLift` | `s"$sym#lift$index"` — the enclosing def's symbol (itself content-addressed once specialized) plus an index counted *within that def alone*, not across the program |
-| Polymorphic struct | `StructSym` | `Eraser` | `ErasureKey.ofStruct(sym, targs)` — the struct's name plus its erased type arguments. Simpler than the def-level key because `SimpleType` is already erased: no type variables, aliases, or effects left to canonicalize |
-| Enum case | `EnumSym` | `Eraser` | `ErasureKey.ofEnum(sym, targs)` — same shape as the struct key. The per-case suffix (e.g. `$None`) is appended afterward from the case's own name; it is not itself part of what gets hashed |
+| Polymorphic struct | `StructSym` | `Eraser` | `ErasureKey.ofStruct(sym, targs)` — the struct's name plus its erased type arguments. Simpler than the def-level key because `SimpleType` is already erased: no type variables, aliases, or effects left to canonicalize. Real and exercised, but does not become a `.class` file name — see below |
+| Enum case | `EnumSym` | `Eraser` | `ErasureKey.ofEnum(sym, targs)` — same shape as the struct key. The per-case suffix (e.g. `$None`) is appended afterward from the case's own name; it is not itself part of what gets hashed. Unlike the struct key, this one *does* become the `.class` file name directly (`List$<id>$Nil`) — but only for a zero-payload case; see below |
 | Anonymous Java class | `AnonClassSym` | `monomorph.Specialization` | `s"$enclosing#anon$index"` — the enclosing *specialized* def (already content-addressed) plus an index counted within that one specialization, not globally |
+
+Both the struct and enum rows need a caveat, of different shapes.
+`ErasureKey.ofStruct`
+is real, and its output is not merely computed and discarded: `Eraser`
+builds an `ErasedAst.Struct` declaration under that specialized symbol,
+and it is what `specializedFieldSym` uses to key `StructGet`/`StructPut`
+sites — struct field accesses genuinely resolve through this
+content-addressed identity. It just never reaches a `.class` file the way
+the other four do. The JVM storage class for a struct comes from a
+separate mechanism one layer down, in the backend: `BackendObjType.Struct`
+is keyed purely on the list of erased field types, with no symbol and no
+struct identity at all (`Struct$Int32`, `Struct$Obj`, ...) — a shared,
+structurally-deduplicated runtime carrier, so two unrelated structs with
+an identical field-type shape legitimately share one storage class, by
+design, for footprint rather than identity. `Tag$<shape>` plays the same
+role for a payload-carrying enum case (checked directly against
+`fixtures/positive/enum-case.flix`: its `Value(a)` case boxes through
+`Tag$Int32`/`Tag$Obj`/..., not a class of its own). A zero-payload case is
+different — it has no payload for `Tag$<shape>` to box, and needs its own
+distinct object per instantiation to satisfy typing, so it is the one case
+kind that keeps a nominal, content-addressed outer class
+(`List$<id>$Nil`). Neither `Struct$<shape>` nor `Tag$<shape>` was ever
+counter-derived to begin with, so they sit outside this ADR's scope
+entirely rather than being a gap in it — but it means
+`scripts/class-id-report`'s census, which reads `.class` file names, can
+observe a zero-payload enum case directly, cannot observe a
+payload-carrying one any more than it can the struct family, and cannot
+observe the struct family at all: that family's evidence lives in the
+compiler's internal erased AST, not in anything a black-box
+`.class`-file census can see.
 
 None of the five consumes a `GenSym` id any more; `StableName.of` derives
 each one from its key instead. Commits, in landing order: `17816c4965`
@@ -72,11 +102,15 @@ each one from its key instead. Commits, in landing order: `17816c4965`
 lambdas/closures), `90fb695bfb` (enums and structs, via the new
 `ErasureKey`).
 
-This lab now exercises all five: `src/AllConstructs.flix`'s specialization-coverage
-section (`describeShape`/`manyInstantiations` for defs, `liftedClosures`
-for closures, `DemoBox` for structs, `anonClassDemo` for anonymous classes,
-and the enum literals throughout for enum cases), censused by
-`scripts/class-id-report`. Running that census against an unrelated
+This lab exercises all five, but only four of them observably through
+`scripts/class-id-report`'s `.class`-file census: `src/AllConstructs.flix`'s
+specialization-coverage section (`describeShape`/`manyInstantiations` for
+defs, `liftedClosures` for closures, `anonClassDemo` for anonymous
+classes, and the enum literals throughout for enum cases). `DemoBox`
+exercises struct field access — genuinely, through the content-addressed
+struct identity described above — but that identity never becomes a
+`.class` file name, so no census of generated classes can observe it; see
+the struct row's caveat for why. Running that census against an unrelated
 project's build (`flix_game_engine`) during this session found exactly
 three id-bearing symbols in 305 class files — a specialized `println` def
 and two enum cases (`List`'s `Nil`, `Option`'s `None`) — which is a
