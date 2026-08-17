@@ -39,32 +39,30 @@ generated `.class` files after the fact, without invoking the compiler, to
 tell counter-derived ids apart from hash-derived ones and measure how many
 of each survive an unrelated edit.
 
-### The five id-minting families
+### The id-minting families
 
-A generated JVM name can carry a `$id` from five distinct sites in the
-compiler, each landed as its own commit against the fork
-(`wstein/flix-fork`, tag `v0.75.3+stable.names.1`). None depends on a
-global counter any more, but not all five are stable for the same reason,
-and only three are actually content-addressed in the sense of hashing a
-description of what the thing *is*: a specialized def's key is its
-originating symbol plus its instantiated type; an enum or struct's key is
-its symbol plus its erased type arguments. Lifted lambdas and anonymous
-classes have no content of their own to hash at all — a lambda's key is
-`<enclosing symbol>#lift<index>`, an index counted within its enclosing
-definition, not a rendering of the lambda's own body or behavior; same
-shape for `<enclosing>#anon<index>` on an anonymous class. Both are stable
-because the index is deterministic and the enclosing symbol is (once that
-enclosing def is itself specialized, one of the three that *is*
-content-derived) — not because either lambda or anonymous class was
-hashed by its own content.
+A generated JVM name can carry a `$id` from distinct sites across the compiler phases,
+each landed against the fork (`wstein/flix-fork`). None depends on a global counter
+any more, but not all are stable for the same reason:
+
+- Three are content-addressed by hashing what the construct *is*: a specialized def's
+  key is its originating symbol plus its canonical instantiated type; an enum or struct's
+  key is its symbol plus its erased type arguments.
+- Lifted lambdas and anonymous classes hash deterministic local structural indices:
+  `<enclosing symbol>#lift<index>` within their enclosing def or `<enclosing>#anon<index>`
+  within their specialized caller.
+- Instance members (`Namer`) and derived trait defs (`Deriver`) derive stable IDs
+  directly from `(instance, member)` and `(trait, derived def)` keys.
 
 | Family | Symbol kind | Phase | Canonical key |
 | --- | --- | --- | --- |
-| Specialized def | `DefnSym` | `monomorph.Specialization` | `SpecializationKey.of(defn.sym, tpe)` — the originating def plus a canonicalized rendering of the specialization's type: type variables numbered by first occurrence (not by inference-allocated symbol), aliases resolved to their underlying type, associated types reduced, record/schema rows sorted, effects in canonical form |
-| Lifted lambda / closure | `DefnSym` | `LambdaLift` | `s"$sym#lift$index"` — the enclosing def's symbol (itself content-addressed once specialized) plus an index counted *within that def alone*, not across the program |
-| Polymorphic struct | `StructSym` | `Eraser` | `ErasureKey.ofStruct(sym, targs)` — the struct's name plus its erased type arguments. Simpler than the def-level key because `SimpleType` is already erased: no type variables, aliases, or effects left to canonicalize. Real and exercised, but does not become a `.class` file name — see below |
-| Enum case | `EnumSym` | `Eraser` | `ErasureKey.ofEnum(sym, targs)` — same shape as the struct key. The per-case suffix (e.g. `$None`) is appended afterward from the case's own name; it is not itself part of what gets hashed. Unlike the struct key, this one *does* become the `.class` file name directly (`List$<id>$Nil`) — but only for a zero-payload case; see below |
-| Anonymous Java class | `AnonClassSym` | `monomorph.Specialization` | `s"$enclosing#anon$index"` — the enclosing *specialized* def (already content-addressed) plus an index counted within that one specialization, not globally |
+| Specialized def | `DefnSym` | `monomorph.Specialization` | `SpecializationKey.of(defn.sym, tpe)` — the originating def plus a canonicalized rendering of the specialization's type: type variables numbered by first occurrence, aliases resolved, associated types reduced, record/schema rows sorted, effects in canonical form |
+| Lifted lambda / closure | `DefnSym` | `LambdaLift` | `s"$sym#lift$index"` — the enclosing def's symbol (content-addressed once specialized) plus an index counted within that def alone |
+| Polymorphic struct | `StructSym` | `Eraser` | `ErasureKey.ofStruct(sym, targs)` — the struct's name plus its erased type arguments. Real and exercised, but does not become an outer `.class` file name (see below) |
+| Enum case | `EnumSym` | `Eraser` | `ErasureKey.ofEnum(sym, targs)` — same shape as struct key. For zero-payload cases (`List$<id>$Nil`), becomes the outer `.class` name directly |
+| Anonymous Java class | `AnonClassSym` | `monomorph.Specialization` | `s"$enclosing#anon$index"` — the enclosing specialized def plus an index counted within that specialization |
+| Instance member def | `DefnSym` | `Namer` | `s"$instance#$member"` — the instance symbol plus the member def name |
+| Derived instance def | `DefnSym` | `Deriver` | `s"$trait#$derivedDef"` — the derived trait symbol plus the def name |
 
 Both the struct and enum rows need a caveat, of different shapes.
 `ErasureKey.ofStruct`
@@ -73,7 +71,7 @@ builds an `ErasedAst.Struct` declaration under that specialized symbol,
 and it is what `specializedFieldSym` uses to key `StructGet`/`StructPut`
 sites — struct field accesses genuinely resolve through this
 content-addressed identity. It just never reaches a `.class` file the way
-the other four do. The JVM storage class for a struct comes from a
+the other families do. The JVM storage class for a struct comes from a
 separate mechanism one layer down, in the backend: `BackendObjType.Struct`
 is keyed purely on the list of erased field types, with no symbol and no
 struct identity at all (`Struct$Int32`, `Struct$Obj`, ...) — a shared,
@@ -96,17 +94,11 @@ observe the struct family at all: that family's evidence lives in the
 compiler's internal erased AST, not in anything a black-box
 `.class`-file census can see.
 
-None of the five consumes a `GenSym` id any more; `StableName.of` derives
-each one from its key instead. Commits, in landing order: `17816c4965`
-(defs), `65ccba13c1` (anonymous classes), `90f095cf59` (lifted
-lambdas/closures), `90fb695bfb` (enums and structs, via the new
-`ErasureKey`).
+None of the families consumes a `GenSym` counter id any more; `StableName.of`
+or `StableName.suffix` derives each one from its key instead.
 
-This lab exercises all five, but only four of them observably through
-`scripts/class-id-report`'s `.class`-file census: `src/AllConstructs.flix`'s
-specialization-coverage section (`describeShape`/`manyInstantiations` for
-defs, `liftedClosures` for closures, `anonClassDemo` for anonymous
-classes, and the enum literals throughout for enum cases). `DemoBox`
+This lab exercises every id-bearing family through `fixtures/pass/` (7 minimal
+isolated fixtures) as well as the complete `src/AllConstructs.flix` benchmark.
 exercises struct field access — genuinely, through the content-addressed
 struct identity described above — but that identity never becomes a
 `.class` file name, so no census of generated classes can observe it; see
