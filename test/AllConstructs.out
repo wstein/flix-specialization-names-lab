@@ -1,0 +1,32 @@
+=== Flix All Constructs Demonstration ===
+Module Helper: HelperModule.helper, Module Value: 42
+Struct Person: Alice, Age: 31
+Effect result: 11
+Java Interop: Hello from Java Interop!
+Java Try/Catch: Try/Catch demo
+Datalog paths found: 6
+Trait describe: Color.Green & Color.Green
+Trait describe: Int32(123) & Int32(123)
+Trait describe: Some(String(nested)) & Some(String(nested))
+Restrictable Shape area: 78.53975
+Pipeline: 30
+Binary Pipeline: 42
+Curried Multiply: 42
+Factorial(5): 120
+Record: x=20, y=Flix, z=3.14
+Poly record getX: 99
+Pattern match: Large Ok: 150
+Tuple pattern match: Status true (1)
+Collections result: 30 :: 1 :: 2 :: 3 :: Nil
+Imperative total: 65
+Evaluating inside unsafe IO block
+Lazy/Casts result: 30
+Par yield: (3, hello world)
+Channel received: 42
+Select received: Hello Select
+DemoBox (polymorphic struct): 42/boxed/true/x/2.5/7/Blue/Some(1)/2/1
+Anon class: from-anon-class/1
+Instantiations: 12
+Lifted closures: 43
+Repeated stdlib: 19
+=== Done ===
