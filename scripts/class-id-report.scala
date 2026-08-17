@@ -23,8 +23,15 @@ object ClassIdReport extends App {
 
   val isJar = Files.isRegularFile(input) && input.toString.endsWith(".jar")
   if (!Files.isDirectory(input) && !isJar) {
-    val reason = if (Files.exists(input)) "not a directory or a .jar file" else "not found"
-    Console.err.println(s"$input: $reason")
+    if (Files.exists(input)) {
+      Console.err.println(s"$input: not a directory or a .jar file")
+      Console.err.println("pass a build/class-style directory, or a .jar built with ./flixw build-jar or build-fatjar")
+    } else if (input == Arguments.DefaultInput) {
+      Console.err.println(s"$input: not found -- this is the default input, and nothing has built it yet")
+      Console.err.println("run ./flixw build-classes to create it, or pass an existing directory or .jar explicitly")
+    } else {
+      Console.err.println(s"$input: not found")
+    }
     sys.exit(1)
   }
   Files.createDirectories(outputDir)
@@ -72,8 +79,10 @@ object Arguments {
   private val Usage = "Usage: ./scripts/class-id-report [class-directory-or-jar] [--output-dir directory] [--json]\n" +
     s"                                  [--stable-width n]  (default: $DefaultStableWidth)"
 
+  val DefaultInput: Path = Paths.get("build/class")
+
   def parse(args: List[String]): Config = {
-    var input = Paths.get("build/class")
+    var input = DefaultInput
     var inputSet = false
     var outputDir = Paths.get(".")
     var format: ReportFormat = ReportFormat.Text
