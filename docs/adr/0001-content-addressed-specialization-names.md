@@ -81,7 +81,7 @@ structurally-deduplicated runtime carrier, so two unrelated structs with
 an identical field-type shape legitimately share one storage class, by
 design, for footprint rather than identity. `Tag$<shape>` plays the same
 role for a payload-carrying enum case (checked directly against
-`fixtures/positive/enum-case.flix`: its `Value(a)` case boxes through
+`fixtures/pass/enum-case.flix`: its `Value(a)` case boxes through
 `Tag$Int32`/`Tag$Obj`/..., not a class of its own). A zero-payload case is
 different — it has no payload for `Tag$<shape>` to box, and needs its own
 distinct object per instantiation to satisfy typing, so it is the one case

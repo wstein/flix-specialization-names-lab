@@ -55,7 +55,7 @@ goto parse
 :usage
 echo Usage: scripts\fixtures-check.cmd [--flix-jar path\to\flix.jar] [--compiler-version string] [-v]
 echo(
-echo Compiles every file under fixtures\positive\ (must succeed) and fixtures\negative\
+echo Compiles every file under fixtures\pass\ (must succeed) and fixtures\fail\
 echo (must fail gracefully -- a reported error, not a crash^), and reports PASS/FAIL for each.
 echo(
 echo Options:

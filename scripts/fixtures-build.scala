@@ -26,12 +26,12 @@ import java.nio.file.{Files, Path, Paths}
 import scala.jdk.CollectionConverters._
 
 /**
-  * Compiles every file under `fixtures/positive/` for real and writes each one's generated
+  * Compiles every file under `fixtures/pass/` for real and writes each one's generated
   * classes to its own directory under `build/fixtures/`, so a single fixture's classes can be
   * censused with `scripts/class-id-report` in isolation -- without `AllConstructs.flix`'s
   * hundreds of other generated names in the way.
   *
-  * `fixtures/negative/` is skipped: every file there is built to fail, by design, so there is
+  * `fixtures/fail/` is skipped: every file there is built to fail, by design, so there is
   * nothing to write.
   *
   * This is the disk-writing counterpart to `scripts/fixtures-check`, which compiles the same
@@ -60,11 +60,11 @@ object FixturesBuild {
     println(s"Compiler: ${config.compilerVersion.getOrElse("unspecified")}")
 
     val root = Paths.get(sys.props.getOrElse("user.dir", "."))
-    val positiveDir = root.resolve("fixtures/positive")
+    val passDir = root.resolve("fixtures/pass")
     val outDir = root.resolve(config.out.getOrElse("build/fixtures"))
 
-    if (!Files.isDirectory(positiveDir)) {
-      Console.err.println(s"$positiveDir: not a directory")
+    if (!Files.isDirectory(passDir)) {
+      Console.err.println(s"$passDir: not a directory")
       System.exit(1)
     }
 
@@ -75,11 +75,11 @@ object FixturesBuild {
     deleteRecursively(outDir)
     Files.createDirectories(outDir)
 
-    val files = Files.list(positiveDir).iterator().asScala.toList
+    val files = Files.list(passDir).iterator().asScala.toList
       .filter(p => Files.isRegularFile(p) && p.toString.endsWith(".flix"))
       .sortBy(_.getFileName.toString)
 
-    println(s"positive (${files.size} fixture(s)):")
+    println(s"pass (${files.size} fixture(s)):")
     val results = files.map(f => build(f, outDir))
 
     println()

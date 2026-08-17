@@ -32,7 +32,7 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/fixtures-check [--flix-jar path/to/flix.jar] [--compiler-version string] [-v]
 
-Compiles every file under fixtures/positive/ (must succeed) and fixtures/negative/
+Compiles every file under fixtures/pass/ (must succeed) and fixtures/fail/
 (must fail gracefully -- a reported error, not a crash), and reports PASS/FAIL for each.
 
 Options:

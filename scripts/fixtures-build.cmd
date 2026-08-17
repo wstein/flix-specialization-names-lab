@@ -19,7 +19,7 @@ rem                         script, and this is unverified either way
 rem
 rem Like scripts/fixtures-check.cmd, this one always changes to the project root: it has
 rem no user-supplied path argument to accidentally resolve against the wrong directory --
-rem it only ever builds this project's own fixtures\positive\ into build\fixtures\.
+rem it only ever builds this project's own fixtures\pass\ into build\fixtures\.
 rem
 rem Usage:
 rem   scripts\fixtures-build.cmd
@@ -56,9 +56,9 @@ goto parse
 :usage
 echo Usage: scripts\fixtures-build.cmd [--flix-jar path\to\flix.jar] [--compiler-version string] [--out dir]
 echo(
-echo Compiles every file under fixtures\positive\ for real and writes each one's generated
+echo Compiles every file under fixtures\pass\ for real and writes each one's generated
 echo classes to its own subdirectory of build\fixtures\ (or --out^), so scripts\class-id-report
-echo can census a single fixture in isolation. fixtures\negative\ is skipped: it is built to
+echo can census a single fixture in isolation. fixtures\fail\ is skipped: it is built to
 echo fail, by design, so there is nothing to write.
 echo(
 echo Options:

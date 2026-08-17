@@ -26,8 +26,8 @@ import java.nio.file.{Files, Path, Paths}
 import scala.jdk.CollectionConverters._
 
 /**
-  * Verifies every file under `fixtures/`: each one under `fixtures/positive/` must
-  * compile; each one under `fixtures/negative/` must fail to compile, gracefully -- a
+  * Verifies every file under `fixtures/`: each one under `fixtures/pass/` must
+  * compile; each one under `fixtures/fail/` must fail to compile, gracefully -- a
   * reported error, not a thrown exception.
   *
   * This is deliberately small, not a peer to `scripts/collision-stress` or
@@ -61,12 +61,12 @@ object FixturesCheck {
     println()
 
     val root = Paths.get(sys.props.getOrElse("user.dir", "."))
-    val positiveDir = root.resolve("fixtures/positive")
-    val negativeDir = root.resolve("fixtures/negative")
+    val passDir = root.resolve("fixtures/pass")
+    val failDir = root.resolve("fixtures/fail")
 
-    val positiveResults = checkAll(positiveDir, expectSuccess = true, config.verbose)
-    val negativeResults = checkAll(negativeDir, expectSuccess = false, config.verbose)
-    val allResults = positiveResults ++ negativeResults
+    val passResults = checkAll(passDir, expectSuccess = true, config.verbose)
+    val failResults = checkAll(failDir, expectSuccess = false, config.verbose)
+    val allResults = passResults ++ failResults
 
     println()
     val failures = allResults.count(!_)

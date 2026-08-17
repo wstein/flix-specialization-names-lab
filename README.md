@@ -50,14 +50,14 @@ The workflow, carried over from the exploration on the
    IDE services keyed on the same symbols) even when its declarations are
    indistinguishable by content alone.
 6. **`fixtures/`** — small, focused, hand-written programs, one claim per
-   file, checked by `scripts/fixtures-check`: `positive/` has one minimal
+   file, checked by `scripts/fixtures-check`: `pass/` has one minimal
    example per id-minting family (isolated from `AllConstructs.flix`'s
-   kitchen-sink shape so each is independently bisectable), `negative/`
+   kitchen-sink shape so each is independently bisectable), `fail/`
    has duplicate-declaration patterns `duplicate-decl-stress` does not
    parametrically reach (enum, struct, trait, instance), each constructed
    so name *and* content collide, not just name. `scripts/fixtures-build`
    is the disk-writing counterpart: it compiles every file under
-   `fixtures/positive/` for real and writes each one's generated classes
+   `fixtures/pass/` for real and writes each one's generated classes
    to its own subdirectory of `build/fixtures/`, so `scripts/class-id-report`
    can census a single fixture in isolation.
 7. Comparing that census across recompiles — with and without unrelated
@@ -78,10 +78,10 @@ The workflow, carried over from the exploration on the
 │   ├── collision-stress(.scala|.cmd)        tries to trigger a stable-name collision for real
 │   ├── duplicate-decl-stress(.scala|.cmd)   checks identical duplicate decls stay diagnosable
 │   ├── fixtures-check(.scala|.cmd)          verifies every file under fixtures/
-│   └── fixtures-build(.scala|.cmd)          builds fixtures/positive/ to build/fixtures/
+│   └── fixtures-build(.scala|.cmd)          builds fixtures/pass/ to build/fixtures/
 ├── fixtures/
-│   ├── positive/                 one minimal, focused example per id-minting family
-│   └── negative/                 duplicate-decl patterns not stress-tested elsewhere
+│   ├── pass/                     one minimal, focused example per id-minting family
+│   └── fail/                     duplicate-decl patterns not stress-tested elsewhere
 ├── docs/
 │   └── adr/                      architecture decision records, e.g. the naming scheme
 ├── .flixw/
@@ -110,7 +110,7 @@ Demonstration"), alongside `test/TestMain.flix` and real `flix.toml`
 metadata, and `scripts/class-id-report`, `scripts/edit-resistance`,
 `scripts/collision-stress`, `scripts/duplicate-decl-stress`,
 `scripts/fixtures-check`, and `scripts/fixtures-build` are in place under
-`scripts/`, alongside the `fixtures/positive/` and `fixtures/negative/`
+`scripts/`, alongside the `fixtures/pass/` and `fixtures/fail/`
 examples the last two of those work against.
 
 ## License

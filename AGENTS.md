@@ -52,7 +52,7 @@ The wrapper adds verbs of its own, ahead of the compiler's:
   `fixtures-check` compiles every file under `fixtures/` and checks it
   behaved as that file's own header comment says it should; `fixtures-build`
   is its disk-writing counterpart, compiling every file under
-  `fixtures/positive/` for real and writing each one's generated classes to
+  `fixtures/pass/` for real and writing each one's generated classes to
   its own subdirectory of `build/fixtures/`, so `class-id-report` can
   census a single fixture in isolation, without `AllConstructs.flix`'s
   hundreds of other generated names in the way.
@@ -66,9 +66,9 @@ The wrapper adds verbs of its own, ahead of the compiler's:
   directive is a static literal, so the wrapper has to hand each one a
   resolved jar via `--jar`
 - `fixtures/` — small, hand-written, one-claim-per-file programs, checked
-  by `scripts/fixtures-check`: `positive/` holds one minimal example per
+  by `scripts/fixtures-check`: `pass/` holds one minimal example per
   id-minting family, isolated from `AllConstructs.flix`'s kitchen-sink
-  shape so each is independently bisectable; `negative/` holds
+  shape so each is independently bisectable; `fail/` holds
   duplicate-declaration patterns (enum, struct, trait, instance) that
   `duplicate-decl-stress` does not parametrically reach, each constructed
   so name *and* content collide, not just name

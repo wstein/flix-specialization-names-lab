@@ -21,7 +21,7 @@
 #
 # Like scripts/fixtures-check, this one always `cd`s to the project root: it has no
 # user-supplied path argument to accidentally resolve against the wrong directory -- it
-# only ever builds this project's own fixtures/positive/ into build/fixtures/.
+# only ever builds this project's own fixtures/pass/ into build/fixtures/.
 #
 # Usage:
 #   ./scripts/fixtures-build
@@ -33,9 +33,9 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/fixtures-build [--flix-jar path/to/flix.jar] [--compiler-version string] [--out dir]
 
-Compiles every file under fixtures/positive/ for real and writes each one's generated
+Compiles every file under fixtures/pass/ for real and writes each one's generated
 classes to its own subdirectory of build/fixtures/ (or --out), so scripts/class-id-report
-can census a single fixture in isolation. fixtures/negative/ is skipped: it is built to
+can census a single fixture in isolation. fixtures/fail/ is skipped: it is built to
 fail, by design, so there is nothing to write.
 
 Options:
