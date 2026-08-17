@@ -61,29 +61,9 @@ The workflow, carried over from the exploration on the
    a hash-derived id should reappear unchanged; a counter-derived one
    renumbers as soon as an earlier declaration shifts.
 
-## Quick start
-
-```sh
-./flixw run          # .\flixw.cmd run on Windows
-```
-
-The only prerequisite is a JDK, Java 21 or newer. You do not need Flix
-installed: the first command downloads `flix.jar` for the version pinned in
-`.flixw/lock.toml`, checks it against the SHA-256 committed alongside it, caches
-it outside the repository, and runs it. Later commands reuse the cache.
-
-```sh
-./flixw check        # type-check; the fast feedback loop
-./flixw test         # run every @Test function under test/
-./flixw format       # reformat sources in place
-./flixw validate     # the wrapper's own consistency checks; what CI runs first
-./flixw doctor       # validate, plus the full picture, for bug reports
-```
-
 ## What is in here
 
 ```
-.
 ├── src/
 │   └── AllConstructs.flix        the id-bearing-symbol demo; see "What the lab measures"
 ├── test/
@@ -116,74 +96,9 @@ it outside the repository, and runs it. Later commands reuse the cache.
 └── LICENSE                       Apache-2.0
 ```
 
-`flix.toml` states a *floor* and `.flixw/lock.toml` states the *pin*. They are
-allowed to differ — any pin at or above the floor satisfies it — but
-`./flixw validate` fails when the pin does not, so the two cannot drift apart
-unnoticed.
-
-## What the wrapper is and is not
-
-`flixw` never patches, forks or links against the Flix compiler. It fetches the
-stock `flix.jar` by URL, verifies the digest before every use, and runs it as an
-opaque process. Moving to another compiler is `./flixw pin <version>`, which
-rewrites the lock; updating the wrapper itself is
-`./flixw wrapper --upgrade`.
-
-Two things are worth knowing before you adopt it. `flixw` is upstream-described
-as experimental, and it is code your project executes on every build — which is
-why it is committed in full and pinned by version and digest rather than curled
-at run time. Read `.flixw/flixw.java` if that matters to you; it is deliberately
-one file.
-
-## Continuous integration
-
-`.github/workflows/build-and-test.yaml` runs `validate`, `check` and `test`
-through the wrapper on Linux, macOS and Windows — the Windows leg exercises
-`flixw.cmd`, the others the POSIX shim. It installs a JDK and nothing else,
-which is the same starting position a new contributor is in. The compiler is
-restored from the runner cache, keyed on `.flixw/lock.toml`, and its digest is
-re-verified whether it came from the cache or the network. Actions are pinned to
-commit digests and kept current by Dependabot.
-
-There is no formatting gate: the pinned compiler's `format` has no check-only
-mode, so run `./flixw format` before you commit.
-
-`.github/workflows/update-flix.yaml` runs weekly. Dependabot has no ecosystem
-for a compiler pinned by URL and digest, so this is its counterpart: it resolves
-the newest `flix/flix` release, re-pins, runs `validate`, `check` and `test`,
-and opens a pull request if all three pass. It never pushes to the default
-branch — the digest in a re-pinned lock is computed by the runner, and that is
-the thing worth reading before merging.
-
-`.github/workflows/docs.yaml` runs `./flixw doc` on every push to `main` and
-publishes this project's own pages to GitHub Pages — for this repository, at
-<https://wstein.github.io/flix-specialization-names-lab/>.
-
-`flix doc` renders the whole standard library alongside the project and has no
-option to narrow that: `--Xlib` decides what is *compiled*, and without the
-library nothing compiles at all. Its `index.html` is the stdlib's `Prelude`
-page. So the workflow picks out the project's pages afterwards — by which ones
-carry a source link into the workspace, which no library page does — writes its
-own landing page listing them, and refuses to publish at all if that finds
-nothing. A link check then fails the build if anything published points at a
-page that was not.
-
-One upstream quirk is worked around there too. `flix doc` builds each `Source`
-link by appending the documented file's path to the standard library's own base
-URL on `flix/flix`, which for this project's files yields a 404 with the build
-machine's absolute path inside it. The workflow rewrites those into permalinks
-at the published commit, and fails if any filesystem path survives.
-
-Pages has to be enabled once, under **Settings → Pages** with source
-**GitHub Actions**: the default `GITHUB_TOKEN` cannot create a Pages site even
-with `pages: write`. Until it is, the documentation is still built and the run
-warns rather than failing, so a fresh copy of this template does not start red.
-
 ## Status
 
-This repository was scaffolded from `flix-template`. The lab content from the
-`flix-specialization-names-lab` branch of the compiler fork has been ported in:
-the demo lives at `src/AllConstructs.flix` (not the `hello.flix` name used
+The demo lives at `src/AllConstructs.flix` (not the `hello.flix` name used
 on that branch — it isn't a hello-world, so it's named for what it actually
 is: `main`'s own banner already called it "Flix All Constructs
 Demonstration"), alongside `test/TestMain.flix` and real `flix.toml`
@@ -192,9 +107,6 @@ metadata, and `scripts/class-id-report`, `scripts/edit-resistance`,
 `scripts/fixtures-check` are in place under `scripts/`, alongside the
 `fixtures/positive/` and `fixtures/negative/` examples the last of those
 checks.
-
-The Flix and `flixw` badges read `.flixw/lock.toml` directly, so re-pinning with
-`./flixw pin <version>` updates them without touching this file.
 
 ## License
 
