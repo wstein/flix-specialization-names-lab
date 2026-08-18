@@ -245,10 +245,15 @@ minting into `Resolver.resolveInstance` so an id is keyed on the *resolved*
 trait and head type rather than however the instance happened to spell them),
 which does call `stableOrCounterId` — the same width-aware path every other
 family already used. Re-measured against that build: same result, 5/5
-counters, 0 hash-derived, for each fixture (`Def$greet$220010` /
-`Def$greet$220011` and `Eq.Def$eq$220030` in place of the hash suffixes
-`Def$greet$pct1fkxn5z9k` / `Def$greet$srqnb1sv8nx6` and
-`Eq/Def$eq$kerxy4p6hwwg` both families carry at the default width). What
+counters, 0 hash-derived, for each fixture (`M/Def$greet$220010` /
+`M/Def$greet$220011` and `Eq/Def$eq$220030` in place of the hash suffixes
+`M/Def$greet$4rq6fkt2d6ho` / `M/Def$greet$agilcc0hjzef` and
+`Eq/Def$eq$kerxy4p6hwwg` both families carry at the default width;
+`instance-member.flix`'s `M/` package prefix is `6a298af02`'s own fix on
+display — the fixture's two instances are now spelled `instance M.Greet[Int32]`
+and `instance Greet[String]`, one qualified and one not, specifically to
+exercise the resolved-trait-not-written-name path this measurement is about).
+What
 changed is *where* this is observable: before, the flag reached the rendered
 bytecode class name but not the AST-level `Symbol.DefnSym.name` a def carries
 by `check()`-time, which stayed hash-shaped regardless (`toString$awemhsldalu5`

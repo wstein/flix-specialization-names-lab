@@ -283,7 +283,7 @@ object FixturesCheck {
   // their def below into a single entry each.
   private val Prefixes = List(
     "Anon$", "DemoBox/Def$roundTrip$", "Person/Def$makeAndAge$", "Describable/Def$describeTwice$",
-    "Wrapper$", "Clo$liftedClosures$", "Def$describeShape$", "Def$greet$", "Eq/Def$eq$", "Color$",
+    "Wrapper$", "Clo$liftedClosures$", "Def$describeShape$", "M/Def$greet$", "Eq/Def$eq$", "Color$",
     "Def$add$", "Def$anonClassDemo$", "Def$binaryPipelineDemo$", "Def$boxDemo$", "Def$collectionsDemo$",
     "Def$concurrencyDemo$", "Def$curriedMultiply$", "Def$datalogDemo$", "Def$describeItem$",
     "Def$factorial$", "Def$genericIdentity$", "Def$getX$", "Def$higherOrderDemo$", "Def$imperativeDemo$",
