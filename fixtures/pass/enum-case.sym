@@ -1,11 +1,11 @@
 case Wrapper.Empty
 case Wrapper.Value
-class Wrapper$5af4cxzx4o3e$Empty.class
-class Wrapper$783xecdmee6s$Empty.class
-class Wrapper$8ch6xjqexyf6$Empty.class
+class Wrapper$1v5wu4jt0khi$Empty
+class Wrapper$36quse9vlvei$Empty
+class Wrapper$vg8fclsywc2k$Empty
 enum Wrapper
 fun main
 instance ToString[Wrapper[t42278]]
-instance-def ToString.toString$a6jbedzdqq85
-var ToString.toString$a6jbedzdqq85/x
+instance-def ToString.toString$d18cimayfm02
+var ToString.toString$d18cimayfm02/x
 var main/_unit

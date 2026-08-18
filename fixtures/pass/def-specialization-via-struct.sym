@@ -1,6 +1,6 @@
-class DemoBox/Def$roundTrip$7ok6l6pengyf.class
-class DemoBox/Def$roundTrip$hh163w2scrby.class
-class DemoBox/Def$roundTrip$p6klyiqrex9e.class
+class DemoBox/Def$roundTrip$2ezc01y50q5n
+class DemoBox/Def$roundTrip$piyoyksg8n74
+class DemoBox/Def$roundTrip$rg41r9blunsk
 field DemoBox.value
 fun DemoBox.roundTrip
 fun main
