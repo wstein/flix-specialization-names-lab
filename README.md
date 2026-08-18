@@ -110,7 +110,7 @@ The workflow, carried over from the exploration on the
 │   ├── pass/                     minimal focused examples per id-minting family (.out, .sym, .hashes)
 │   └── fail/                     duplicate-decl negative fixtures (.expect)
 ├── docs/
-│   └── adr/                      architecture decision records, e.g. the naming scheme
+│   └── adr/                      how the lab measures; the scheme itself is decided in the fork
 ├── .flixw/
 │   ├── flixw.java                the wrapper proper — one dependency-free Java file
 │   └── lock.toml                 the exact compiler, its URL, and its SHA-256

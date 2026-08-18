@@ -28,7 +28,7 @@ import ca.uwaterloo.flix.util.{Options, Validation}
   *
   * At the default 12-character width, a collision needs on the order of `sqrt(36^12)` ≈
   * 2.6 billion specializations -- not reachable here. `--Xstable-name-length` (this lab's
-  * ADR documents it in `docs/adr/0001-content-addressed-specialization-names.md`) narrows
+  * the fork documents it in `docs/adr/0002-content-addressed-generated-names.md`) narrows
   * that width, and at a narrow enough width the birthday bound comes down to a few hundred
   * specializations, which is reachable: generate that many distinct specializations of one
   * generic def, compile at that width, and see what actually happens.

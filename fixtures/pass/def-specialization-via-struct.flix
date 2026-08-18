@@ -10,7 +10,7 @@
 // Kept as a separate fixture anyway because that interaction (specialization through a
 // region-scoped mutation) is worth having isolated on its own.
 //
-// docs/adr/0001-content-addressed-specialization-names.md's "five id-minting families"
+// wstein/flix-fork's docs/adr/0002-content-addressed-generated-names.md, "The key contract"
 // table is being corrected to match: what actually triggers `ErasureKey.ofStruct` for a
 // struct's own class, if anything does under this compiler's current behavior, is still
 // open -- see that ADR section for the current state of that question.

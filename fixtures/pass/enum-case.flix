@@ -1,5 +1,5 @@
 // Enum case: a generic enum instantiated at several distinct types. See docs/adr/
-// 0001-content-addressed-specialization-names.md, "The five id-minting families" -- this
+// 0002-content-addressed-generated-names.md (in wstein/flix-fork), "The key contract" -- this
 // is the `ErasureKey.ofEnum(sym, targs)`-keyed family, computed in the Eraser phase from
 // the enum's erased type arguments.
 //

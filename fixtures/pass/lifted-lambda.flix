@@ -1,6 +1,6 @@
 // Lifted lambda / closure: a lambda that captures a variable and escapes its enclosing
 // def (by being returned), rather than being inlined into its only use. See docs/adr/
-// 0001-content-addressed-specialization-names.md, "The five id-minting families" -- this
+// 0002-content-addressed-generated-names.md (in wstein/flix-fork), "The key contract" -- this
 // is the `<enclosing symbol>#lift<index>`-keyed family: LambdaLift numbers a lambda by
 // its position within the def it was lifted from, not by a program-wide counter.
 //
