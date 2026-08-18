@@ -51,8 +51,12 @@ any more, but not all are stable for the same reason:
 - Lifted lambdas and anonymous classes hash deterministic local structural indices:
   `<enclosing symbol>#lift<index>` within their enclosing def or `<enclosing>#anon<index>`
   within their specialized caller.
-- Instance members (`Namer`) and derived trait defs (`Deriver`) derive stable IDs
-  directly from `(instance, member)` and `(trait, derived def)` keys.
+- Instance members (`Resolver`) and derived trait defs (`Deriver`) derive stable IDs
+  directly from `(instance, member)` and `(trait, derived def)` keys. Both now mint
+  through the same `Symbol.memberDefnSym`/`memberKey` pair — one from a namespace and
+  identifier (the written-member call site, `Resolver.resolveInstance`), the other from
+  a fully-qualified name (`Deriver`'s) — so a derived member and a written one cannot be
+  named differently for the same `(instance, member)` pair.
 
 | Family | Symbol kind | Phase | Canonical key |
 | --- | --- | --- | --- |
@@ -61,7 +65,7 @@ any more, but not all are stable for the same reason:
 | Polymorphic struct | `StructSym` | `Eraser` | `ErasureKey.ofStruct(sym, targs)` — the struct's name plus its erased type arguments. Real and exercised, but does not become an outer `.class` file name (see below) |
 | Enum case | `EnumSym` | `Eraser` | `ErasureKey.ofEnum(sym, targs)` — same shape as struct key. For zero-payload cases (`List$<id>$Nil`), becomes the outer `.class` name directly |
 | Anonymous Java class | `AnonClassSym` | `monomorph.Specialization` | `s"$enclosing#anon$index"` — the enclosing specialized def plus an index counted within that specialization |
-| Instance member def | `DefnSym` | `Namer` | `s"$instance#$member"` — the instance symbol plus the member def name |
+| Instance member def | `DefnSym` | `Resolver` (`resolveInstance`, from the resolved trait symbol and head type — moved from `Namer`, which only had the trait name and type *as written*, so a qualified and an unqualified reference to the same trait used to mint different ids) | `s"$instance#$member"` — the instance symbol plus the member def name |
 | Derived instance def | `DefnSym` | `Deriver` | `s"$trait#$derivedDef"` — the derived trait symbol plus the def name |
 
 Both the struct and enum rows need a caveat, of different shapes.
@@ -219,25 +223,39 @@ is still an escape hatch for builds that want smaller names and a smaller
 margin, not a replacement for the 12-character default — but "does the
 guard catch a truncated collision" is answered, not open.
 
-The instance-member (`Namer`) and derived-instance (`Deriver`) families mint
-their ids at a different call site than the rest of the table above —
+The instance-member (`Namer`, at the time) and derived-instance (`Deriver`) families
+minted their ids at a different call site than the rest of the table above —
 `SymId.Hash(StableName.suffix(key))` directly, rather than through
 `Symbol.stableOrCounterId` — which raised a question reading the call sites
 in isolation cannot settle: does `--Xstable-name-length 0`'s documented
 "falls back to classic incrementing ids" behavior actually reach them, or
 does the different call site bypass it and keep emitting content-addressed
-ids regardless? Measured, not reasoned about: it reaches them, in the
-currently pinned build. `./scripts/fixtures-build --stable-width 0`
-compiles `fixtures/pass/instance-member.flix` and
-`fixtures/pass/derived-instance.flix` at width 0; censusing the result with
-`./scripts/class-id-report --stable-width 12` (12, not 0 — the width being
-searched for, not the width the build used; see that flag's own doc
-comment) finds `Def$greet$218936` / `Def$greet$218937` and
-`Eq.Def$eq$218956` in place of the hash suffixes (`Def$greet$caay4vt7o7m6`
-/ `Def$greet$q3ct2ikg4kl5` and `Eq/Def$eq$zv09qnbyrxqf`) both families carry
-at the default width — 5 sequential counters, 0 hash-derived ids, for each
-fixture. No content-addressed id from either family survived turning the
-flag down to zero.
+ids regardless? Measured, not reasoned about: it reached them, on the build
+pinned at the time. `./scripts/fixtures-build --stable-width 0` compiles
+`fixtures/pass/instance-member.flix` and `fixtures/pass/derived-instance.flix`
+at width 0; censusing the result with `./scripts/class-id-report --stable-width
+12` (12, not 0 — the width being searched for, not the width the build used;
+see that flag's own doc comment) found 5 sequential counters, 0 hash-derived
+ids, for each fixture. No content-addressed id from either family survived
+turning the flag down to zero.
+
+That call-site distinction is now historical: `Namer` and `Deriver` both mint
+through `Symbol.memberDefnSym` (fork commit `6a298af02`, moving instance-member
+minting into `Resolver.resolveInstance` so an id is keyed on the *resolved*
+trait and head type rather than however the instance happened to spell them),
+which does call `stableOrCounterId` — the same width-aware path every other
+family already used. Re-measured against that build: same result, 5/5
+counters, 0 hash-derived, for each fixture (`Def$greet$220010` /
+`Def$greet$220011` and `Eq.Def$eq$220030` in place of the hash suffixes
+`Def$greet$pct1fkxn5z9k` / `Def$greet$srqnb1sv8nx6` and
+`Eq/Def$eq$kerxy4p6hwwg` both families carry at the default width). What
+changed is *where* this is observable: before, the flag reached the rendered
+bytecode class name but not the AST-level `Symbol.DefnSym.name` a def carries
+by `check()`-time, which stayed hash-shaped regardless (`toString$awemhsldalu5`
+did not become `toString$<counter>` even as `Def$eq$<counter>.class` did) —
+`fixtures-check.scala`'s own regression guard for this (`sourceInstanceDefIds`)
+was, at the time, unable to ever fire through that path. It fires now: the
+AST-level name reflects width 0 too, confirmed on the same re-measurement.
 
 ### Collision policy
 
@@ -285,8 +303,8 @@ matching what `Eraser`'s check already did — fixed it. The lesson
 generalizes: a collision guard for a content-addressed name must compare
 the same identity the name itself is built from, not a proxy for it.
 
-Two of the five families above — `Namer` and `Deriver` — mint an id that
-never appears directly in a generated JVM name: an instance member's or
+Two of the five families above — instance member defs and derived instance defs
+(`Resolver` and `Deriver`) — mint an id that never appears directly in a generated JVM name: an instance member's or
 derived def's id becomes part of the input to that def's own
 `SpecializationKey` hash once it is specialized, not a literal suffix on
 its own. They still need the identical collision guard, for the identical

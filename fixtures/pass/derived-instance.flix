@@ -1,6 +1,8 @@
 // Minimal fixture exercising derived-instance def id minting.
-// In Deriver.scala, derived instance defs (e.g. ToString.toString, Eq.eq)
-// mint a content-addressed SymId.Hash via StableName.suffix.
+// In Deriver.scala, derived instance defs (e.g. ToString.toString, Eq.eq) mint a
+// content-addressed SymId.Hash via Symbol.memberDefnSym/StableName, the same helper
+// Resolver.resolveInstance uses for a written instance member, keyed on the looked-up
+// trait symbol rather than the raw derivation name.
 enum Color with ToString, Eq {
     case Red,
     case Green,

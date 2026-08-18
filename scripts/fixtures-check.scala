@@ -144,7 +144,7 @@ object FixturesCheck {
           // user actually wrote, not filtered to only the ones that happen to mint an id --
           // but it runs before monomorphization, so specialized-def, lifted-lambda,
           // anonymous-class, and enum-case ids don't exist yet there; only instance
-          // members and derived instance defs (Namer/Deriver) mint theirs early enough to
+          // members and derived instance defs (Resolver/Deriver) mint theirs early enough to
           // show up, already embedded in the symbol's own name (e.g. `toString$<id>`).
           // `compile()`'s generated classes are still needed for the other four families'
           // ids, which only exist post-codegen.
@@ -156,7 +156,9 @@ object FixturesCheck {
           val sourceHashes = instanceDefIds.filter(_.kind == "hash").map(_.id)
 
           val classEntries = result.getClasses.keys.flatMap { jvmName =>
-            val path = (jvmName.pkg :+ s"${jvmName.name}.class").mkString("/")
+            // No ".class" suffix: the `class` kind label already says what this is, so the
+            // JVM file extension is pure noise in .sym/.hashes and the FAIL diagnostics.
+            val path = (jvmName.pkg :+ jvmName.name).mkString("/")
             matchedPrefix(path).map { prefix =>
               val (kind, id) = classify(path, prefix)
               (path, kind, id)
@@ -329,7 +331,7 @@ object FixturesCheck {
   // tool knows precisely which literal text precedes an id, unlike a blind stdlib-scale
   // census that has to infer it (see scripts/class-id-report.scala's Ids.isPlausibleId).
   private def classify(path: String, prefix: String): (String, String) = {
-    val rest = path.stripPrefix(prefix).stripSuffix(".class")
+    val rest = path.stripPrefix(prefix)
     val idRun = rest.takeWhile(c => c.isDigit || (c >= 'a' && c <= 'z'))
     (classifyId(idRun), idRun)
   }
@@ -404,20 +406,23 @@ object FixturesCheck {
       effectLines ++ opLines ++ aliases).toList
   }
 
-  // Instance members and derived instance defs (Namer/Deriver) mint their id early enough
-  // that it is already part of the symbol's own name by check()-time -- e.g.
-  // `toString$awemhsldalu5` -- unlike the four families that only get theirs at codegen.
-  // The id is always the trailing `$`-segment for this family (unlike the bytecode-level
-  // enum-case family, where a case tag can follow it), so a plain last-`$`-split suffices.
+  // Instance members and derived instance defs (Resolver.resolveInstance and Deriver,
+  // both through the shared Symbol.memberDefnSym) mint their id early enough that it is
+  // already part of the symbol's own name by check()-time -- e.g. `toString$awemhsldalu5`
+  // -- unlike the four families that only get theirs at codegen. The id is always the
+  // trailing `$`-segment for this family (unlike the bytecode-level enum-case family,
+  // where a case tag can follow it), so a plain last-`$`-split suffices.
   //
-  // Verified against a build forced to --Xstable-name-length 0 that this name stays
-  // hash-shaped regardless -- the fallback to classic incrementing ids for these two
-  // families happens later, only in the rendered bytecode class name (which is what
-  // `classify` below catches). So this function is not a second, redundant path to the
-  // same failure: it exists for a distinct, still-plausible regression -- Namer or Deriver
-  // itself minting a non-content-addressed, or wrong-width, id at the AST level -- that a
-  // bytecode-only check could miss if it ever happened to render into a fixed-width-looking
-  // string.
+  // This function's own regression check is reachable, not just a defensive extra --
+  // confirmed both ways, against two different builds forced to --Xstable-name-length 0.
+  // Before the fork's cae8fa01e ("honour --Xstable-name-length at every id site"), Namer
+  // and Deriver called StableName.suffix directly instead of the width-aware
+  // Symbol.stableOrCounterId, so this name stayed hash-shaped regardless of the flag --
+  // width 0 only ever showed up in the rendered bytecode class name (`classify` below), and
+  // this check could not have caught anything through this path. Once Resolver/Deriver mint
+  // through the shared Symbol.memberDefnSym, which does call stableOrCounterId, width 0
+  // reaches the AST-level name too: e.g. `toString$awemhsldalu5` becomes `toString$182784`,
+  // caught here as a `counter`, before codegen ever produces a class name to check.
   private case class InstanceDefId(qualified: String, id: String, kind: String)
 
   private def sourceInstanceDefIds(root: TypedAst.Root): List[InstanceDefId] = {
