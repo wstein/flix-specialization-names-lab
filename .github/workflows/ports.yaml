@@ -1,0 +1,123 @@
+name: Ports
+
+on:
+  pull_request:
+    paths:
+      - "ports/**"
+      - ".github/workflows/ports.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "ports/**"
+      - ".github/workflows/ports.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Each of the four comparative-reference ports (see docs/ports.md) uses its
+# own toolchain, entirely decoupled from flixw and from build-and-test.yaml.
+# One job per language rather than an OS matrix: these are a comparative
+# reference, not the lab's own cross-platform-supported artifact, so a
+# single platform is enough to keep each port honest.
+jobs:
+  scala:
+    name: Scala (sbt)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ports/scala
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install sbt
+        uses: sbt/setup-sbt@8feba82adc7f01ddcf8165b86f778bdb5b82cebc # v1.5.7
+
+      - name: Check formatting
+        run: sbt -batch scalafmtCheckAll
+
+      - name: Test
+        run: sbt -batch test
+
+  java:
+    name: Java (Maven)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ports/java
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: ports/java/pom.xml
+
+      - name: Check formatting
+        run: mvn -B fmt:check
+
+      - name: Test
+        run: mvn -B test
+
+  kotlin:
+    name: Kotlin (Gradle)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ports/kotlin
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Check formatting
+        run: ./gradlew ktlintCheck
+
+      - name: Test
+        run: ./gradlew test
+
+  clojure:
+    name: Clojure (Leiningen)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ports/clojure
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Leiningen
+        uses: DeLaGuardo/setup-clojure@4c7a6f613e5089821bb3bb2a33a3ee115578580d # 13.6.1
+        with:
+          lein: latest
+
+      - name: Check formatting
+        run: lein cljfmt check
+
+      - name: Test
+        run: lein test

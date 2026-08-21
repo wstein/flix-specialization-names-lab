@@ -1,6 +1,7 @@
 # flix-specialization-names-lab
 
 [![Build and Test](https://github.com/wstein/flix-specialization-names-lab/actions/workflows/build-and-test.yaml/badge.svg)](https://github.com/wstein/flix-specialization-names-lab/actions/workflows/build-and-test.yaml)
+[![Ports](https://github.com/wstein/flix-specialization-names-lab/actions/workflows/ports.yaml/badge.svg)](https://github.com/wstein/flix-specialization-names-lab/actions/workflows/ports.yaml)
 [![Flix](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwstein%2Fflix-specialization-names-lab%2Fmain%2F.flixw%2Flock.toml&query=%24.compiler.version&label=flix&color=blue)](.flixw/lock.toml)
 [![flixw](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwstein%2Fflix-specialization-names-lab%2Fmain%2F.flixw%2Flock.toml&query=%24.wrapperVersion&label=flixw&color=blue)](https://github.com/wstein/flixw)
 [![Java](https://img.shields.io/badge/java-21%2B-blue)](https://adoptium.net/temurin/releases/?version=21)
@@ -89,11 +90,28 @@ The workflow, carried over from the exploration on the
    a hash-derived id should reappear unchanged; a counter-derived one
    renumbers as soon as an earlier declaration shifts.
 
+## Ports (comparative reference)
+
+`ports/{scala,java,kotlin,clojure}/` are four sibling ports of
+`src/AllConstructs.flix`, one per JVM language, showing how each expresses
+the same constructs Flix's own demo exercises. They are **not part of the
+naming-stability measurement above** — JVM generics erase, so there is no
+per-specialization class for a `class-id-report` equivalent to find, and
+none of `scripts/` reads anything under `ports/`. See
+[`docs/ports.md`](docs/ports.md) for the full per-language mapping and
+[`docs/adr/0002-ports-are-comparative-not-experimental.md`](docs/adr/0002-ports-are-comparative-not-experimental.md)
+for that boundary decision.
+
 ## What is in here
 
 ```
 ├── src/
 │   └── AllConstructs.flix        the id-bearing-symbol demo; see "What the lab measures"
+├── ports/                        comparative-reference ports of AllConstructs.flix; not
+│   ├── scala/                    part of the naming-stability measurement -- see "Ports"
+│   ├── java/                     above and docs/ports.md
+│   ├── kotlin/
+│   └── clojure/
 ├── test/
 │   ├── TestMain.flix             @Test functions covering AllConstructs.flix
 │   ├── AllConstructs.out         expected runtime output snapshot for AllConstructs.flix
@@ -110,13 +128,16 @@ The workflow, carried over from the exploration on the
 │   ├── pass/                     minimal focused examples per id-minting family (.out, .sym, .hashes)
 │   └── fail/                     duplicate-decl negative fixtures (.expect)
 ├── docs/
-│   └── adr/                      how the lab measures; the scheme itself is decided in the fork
+│   ├── adr/                      how the lab measures, and what the ports (below) deliberately
+│   │                              don't measure; the naming scheme itself is decided in the fork
+│   └── ports.md                  per-language mapping table for ports/, and its erasure caveat
 ├── .flixw/
 │   ├── flixw.java                the wrapper proper — one dependency-free Java file
 │   └── lock.toml                 the exact compiler, its URL, and its SHA-256
 ├── .github/
 │   ├── workflows/
 │   │   ├── build-and-test.yaml   validate, check and test, on three platforms
+│   │   ├── ports.yaml            build and test each ports/ subproject, its own toolchain
 │   │   ├── update-flix.yaml      weekly: re-pin the compiler, open a pull request
 │   │   └── docs.yaml             build the API docs, publish them to Pages
 │   └── dependabot.yml            keeps the workflows' pinned action digests current
@@ -138,7 +159,9 @@ metadata, and `scripts/class-id-report`, `scripts/edit-resistance`,
 `scripts/collision-stress`, `scripts/duplicate-decl-stress`,
 `scripts/fixtures-check`, and `scripts/fixtures-build` are in place under
 `scripts/`, alongside the `fixtures/pass/` and `fixtures/fail/`
-examples the last two of those work against.
+examples the last two of those work against. `ports/scala`, `ports/java`,
+`ports/kotlin`, and `ports/clojure` hold the comparative-reference ports
+described above, each with its own test suite.
 
 ## License
 
