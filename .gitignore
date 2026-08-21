@@ -16,6 +16,18 @@ out/
 symbols-*.csv
 ids-*.txt
 
+# ports/{scala,java,kotlin,clojure} build output -- each subproject's own
+# toolchain (sbt, Maven, Gradle, Leiningen), independent of flixw.
+ports/**/target/
+ports/**/build/
+ports/**/.gradle/
+ports/clojure/.lein-failures
+
+# The global *.jar rule above would also catch the Kotlin subproject's
+# committed Gradle wrapper jar, without which ./gradlew cannot bootstrap on
+# a fresh clone.
+!ports/kotlin/gradle/wrapper/gradle-wrapper.jar
+
 # Machine-specific, never meant to be shared -- see .envrc.example
 .envrc
 .envrc.local
