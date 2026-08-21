@@ -69,6 +69,34 @@ public final class Main {
     System.out.println("Pattern match: " + patMatchRes);
     System.out.println("Tuple pattern match: " + tupleMatchRes);
 
-    System.out.println("=== Sections 1-11 done; 12-16 land in the next phase ===");
+    // Literals & Collections & Comprehensions
+    int lit = Literals.literalsDemo();
+    var colList = Literals.collectionsDemo();
+    System.out.println("Collections result: " + colList);
+
+    // Imperative & References
+    int impRes = Imperative.imperativeDemo();
+    System.out.println("Imperative total: " + impRes);
+
+    // Lazy & Casts
+    int lazyRes = LazyAndCasts.lazyAndCastsDemo();
+    System.out.println("Lazy/Casts result: " + lazyRes);
+
+    // Parallelism & Concurrency & Select
+    var parYieldRes = Concurrency.parYieldDemo();
+    System.out.println("Par yield: (" + parYieldRes.x() + ", " + parYieldRes.y() + ")");
+    int chanVal = Concurrency.concurrencyDemo();
+    System.out.println("Channel received: " + chanVal);
+    String selectVal = Concurrency.selectDemo();
+    System.out.println("Select received: " + selectVal);
+
+    // Specialization Coverage
+    System.out.println("DemoBox (polymorphic struct): " + DemoBox.boxDemo());
+    System.out.println("Anon class: " + AnonClass.anonClassDemo());
+    System.out.println("Instantiations: " + ManyInstantiations.manyInstantiations());
+    System.out.println("Lifted closures: " + LiftedClosures.liftedClosuresDemo());
+    System.out.println("Repeated stdlib: " + RepeatedStdlib.repeatedStdlibDemo());
+
+    System.out.println("=== Done ===");
   }
 }
