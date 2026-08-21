@@ -60,5 +60,33 @@ fun main() {
     println("Pattern match: $patMatchRes")
     println("Tuple pattern match: $tupleMatchRes")
 
-    println("=== Sections 1-11 done; 12-16 land in the next phase ===")
+    // Literals & Collections & Comprehensions
+    val lit = literalsDemo()
+    val colList = collectionsDemo()
+    println("Collections result: $colList")
+
+    // Imperative & References
+    val impRes = imperativeDemo()
+    println("Imperative total: $impRes")
+
+    // Lazy & Casts
+    val lazyRes = lazyAndCastsDemo()
+    println("Lazy/Casts result: $lazyRes")
+
+    // Parallelism & Concurrency & Select
+    val (py1, py2) = parYieldDemo()
+    println("Par yield: ($py1, $py2)")
+    val chanVal = concurrencyDemo()
+    println("Channel received: $chanVal")
+    val selectVal = selectDemo()
+    println("Select received: $selectVal")
+
+    // Specialization Coverage
+    println("DemoBox (polymorphic struct): ${boxDemo()}")
+    println("Anon class: ${anonClassDemo()}")
+    println("Instantiations: ${manyInstantiations()}")
+    println("Lifted closures: ${liftedClosuresDemo()}")
+    println("Repeated stdlib: ${repeatedStdlibDemo()}")
+
+    println("=== Done ===")
 }
