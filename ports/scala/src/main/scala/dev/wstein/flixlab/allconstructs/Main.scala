@@ -1,7 +1,7 @@
 package dev.wstein.flixlab.allconstructs
 
 /** Entry point mirroring `AllConstructs.flix`'s `main`, minus the Datalog section (excluded from
-  * every port -- see docs/ports.md at the repository root). Sections 12-16 land in the next phase.
+  * every port -- see docs/ports.md at the repository root).
   */
 object Main:
   def main(args: Array[String]): Unit =
@@ -60,4 +60,32 @@ object Main:
     println(s"Pattern match: $patMatchRes")
     println(s"Tuple pattern match: $tupleMatchRes")
 
-    println("=== Sections 1-11 done; 12-16 land in the next phase ===")
+    // Literals & Collections & Comprehensions
+    val _lit = literalsDemo()
+    val colList = collectionsDemo()
+    println(s"Collections result: $colList")
+
+    // Imperative & References
+    val impRes = imperativeDemo()
+    println(s"Imperative total: $impRes")
+
+    // Lazy & Casts
+    val lazyRes = lazyAndCastsDemo()
+    println(s"Lazy/Casts result: $lazyRes")
+
+    // Parallelism & Concurrency & Select
+    val (py1, py2) = parYieldDemo()
+    println(s"Par yield: ($py1, $py2)")
+    val chanVal = concurrencyDemo()
+    println(s"Channel received: $chanVal")
+    val selectVal = selectDemo()
+    println(s"Select received: $selectVal")
+
+    // Specialization Coverage
+    println(s"DemoBox (polymorphic struct): ${boxDemo()}")
+    println(s"Anon class: ${anonClassDemo()}")
+    println(s"Instantiations: ${manyInstantiations()}")
+    println(s"Lifted closures: ${liftedClosuresDemo()}")
+    println(s"Repeated stdlib: ${repeatedStdlibDemo()}")
+
+    println("=== Done ===")
