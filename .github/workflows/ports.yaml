@@ -41,7 +41,7 @@ jobs:
           java-version: "21"
 
       - name: Install sbt
-        uses: sbt/setup-sbt@8feba82adc7f01ddcf8165b86f778bdb5b82cebc # v1.5.7
+        uses: sbt/setup-sbt@6158cb0903b8ceeae04f830055f3155e1b6a5ad7 # v1.5.11
 
       - name: Check formatting
         run: sbt -batch scalafmtCheckAll
