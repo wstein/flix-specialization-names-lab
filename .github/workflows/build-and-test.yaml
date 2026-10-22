@@ -46,7 +46,7 @@ jobs:
       # against the committed digest before running it. The lock pins java 26 ([java] in
       # .flixw/lock.toml), and validate rejects any other JAVA_HOME.
       - name: Install JDK 26
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '26'
